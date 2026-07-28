@@ -1,11 +1,20 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 type View = "home" | "explore" | "detail" | "builder" | "results" | "about";
 type RiskPreference = "conservative" | "balanced" | "aggressive";
 type AllocationMethod = "equal" | "score";
 type FactorKey = "beta" | "smb" | "rmw" | "cma" | "hmlo" | "momentum" | "volatility";
+type PortfolioType =
+  | "均衡型"
+  | "穩健低波動型"
+  | "品質成長型"
+  | "價值型"
+  | "動能型"
+  | "小型股風格"
+  | "大型股穩健型"
+  | "自訂型";
 
 type Stock = {
   stock_id: string;
@@ -46,6 +55,7 @@ type Stock = {
 };
 
 type PortfolioSettings = {
+  portfolioType: PortfolioType;
   totalAmount: number;
   stockCount: number;
   minOverallStar: number;
@@ -55,6 +65,7 @@ type PortfolioSettings = {
   industryCap: number;
   oddLots: boolean;
   factorWeights: Record<FactorKey, number>;
+  candidateOnly: boolean;
   allocationMethod: AllocationMethod;
   maxSingleWeight: number;
   minSingleWeight: number;
@@ -63,6 +74,7 @@ type PortfolioSettings = {
 
 type Recommendation = Stock & {
   custom_score: number;
+  factor_scores: Record<FactorKey, number>;
   rank: number;
   allocation_weight: number;
   target_amount: number;
@@ -73,25 +85,68 @@ type Recommendation = Stock & {
   risk_reasons: string[];
 };
 
-const factorLabels: Record<FactorKey, string> = {
-  beta: "Beta",
-  smb: "SMB",
-  rmw: "RMW",
-  cma: "CMA",
-  hmlo: "HML_o",
-  momentum: "Momentum",
-  volatility: "Volatility",
+type ExcludedCandidate = {
+  stock_id: string;
+  stock_name: string;
+  reason: string;
 };
 
-const factorHelp: Record<FactorKey, string> = {
-  beta: "市場風險曝險，需依風險偏好判斷理想區間。",
-  smb: "規模風格曝險，正值偏小型股，負值偏大型股。",
-  rmw: "獲利能力因子曝險，較高通常代表品質特徵較明顯。",
-  cma: "投資風格因子曝險，正值偏保守投資，負值偏積極擴張。",
-  hmlo: "正交化價值因子曝險，協助辨識價值風格。",
-  momentum: "歷史動能表現，反映近期相對強弱。",
-  volatility: "歷史波動度，穩健偏好下會採反向計分。",
+type RecommendationResult = {
+  recommendations: Recommendation[];
+  poolMode: "完整股票池" | "僅使用候選股票";
+  candidateTotal: number;
+  eligibleCandidateCount: number;
+  excludedCandidates: ExcludedCandidate[];
+  validationErrors: string[];
+  requestPayload: {
+    portfolioType: "custom" | PortfolioType;
+    factorWeights: Record<FactorKey, number>;
+    candidateOnly: boolean;
+    candidateTickers: string[];
+    stockCount: number;
+    riskPreference: RiskPreference;
+  };
 };
+
+const factorMeta: Record<FactorKey, { label: string; shortLabel: string; help: string }> = {
+  beta: {
+    label: "市場敏感因子",
+    shortLabel: "Beta",
+    help: "衡量股票對整體市場波動的敏感度。保守偏好會降低高 Beta 股票分數，積極偏好則較能接受高市場曝險。",
+  },
+  smb: {
+    label: "規模因子",
+    shortLabel: "SMB",
+    help: "衡量大型股與小型股風格。正值偏小型股，負值偏大型股；保守偏好下會較偏好大型股特性。",
+  },
+  rmw: {
+    label: "獲利因子",
+    shortLabel: "RMW",
+    help: "評估公司的獲利能力與品質特徵，百分位越高代表相對市場樣本的獲利風格越突出。",
+  },
+  cma: {
+    label: "投資風格因子",
+    shortLabel: "CMA",
+    help: "衡量公司投資行為偏保守或偏積極擴張，正值通常代表投資配置較保守穩健。",
+  },
+  hmlo: {
+    label: "價值因子",
+    shortLabel: "HML_o",
+    help: "使用正交化價值因子辨識價格相對基本面是否具價值風格，百分位越高代表價值特徵越清楚。",
+  },
+  momentum: {
+    label: "動能因子",
+    shortLabel: "Momentum",
+    help: "評估股票近期相對強弱與趨勢延續性，百分位越高代表近期動能越明顯。",
+  },
+  volatility: {
+    label: "低波動因子",
+    shortLabel: "Volatility",
+    help: "衡量歷史波動度；建立投資組合時沿用原本反向計分，偏好波動較小、風險相對較低的股票。",
+  },
+};
+
+const factorKeys: FactorKey[] = ["beta", "smb", "rmw", "cma", "hmlo", "momentum", "volatility"];
 
 const stocks: Stock[] = [
   {
@@ -466,7 +521,7 @@ const stocks: Stock[] = [
   },
 ];
 
-const presets: Record<string, Record<FactorKey, number>> = {
+const presets: Record<Exclude<PortfolioType, "自訂型">, Record<FactorKey, number>> = {
   均衡型: { beta: 10, smb: 10, rmw: 20, cma: 15, hmlo: 15, momentum: 15, volatility: 15 },
   穩健低波動型: { beta: 10, smb: 5, rmw: 20, cma: 20, hmlo: 15, momentum: 5, volatility: 25 },
   品質成長型: { beta: 10, smb: 5, rmw: 30, cma: 15, hmlo: 5, momentum: 25, volatility: 10 },
@@ -476,7 +531,27 @@ const presets: Record<string, Record<FactorKey, number>> = {
   大型股穩健型: { beta: 15, smb: 5, rmw: 25, cma: 20, hmlo: 15, momentum: 5, volatility: 15 },
 };
 
+const portfolioDescriptions: Record<PortfolioType, string> = {
+  均衡型:
+    "適合希望風險與報酬較平均的投資者。風險程度中等，選股方向分散於品質、投資風格、價值、動能與低波動，RMW 權重最高。",
+  穩健低波動型:
+    "適合重視本金波動控制與防守性的投資者。風險程度偏低，主要挑選低波動、品質佳且投資行為較保守的股票，較重視低波動、RMW 與 CMA。",
+  品質成長型:
+    "適合可接受中高波動、希望捕捉基本面品質與趨勢延續的投資者。風險程度中高，主要選股方向為高獲利能力與強動能，較重視 RMW 與 Momentum。",
+  價值型:
+    "適合偏好價格相對基本面具吸引力、可承受等待修復時間的投資者。風險程度中等，主要選股方向為價值風格清楚且品質不弱的股票，最重視 HML_o。",
+  動能型:
+    "適合能承受趨勢反轉風險、偏好近期強勢標的的投資者。風險程度偏高，主要選股方向為價格動能明顯的股票，最重視 Momentum。",
+  小型股風格:
+    "適合願意承擔規模與流動性風險、尋找小型股風格曝險的投資者。風險程度偏高，主要選股方向為 SMB 百分位較高且品質尚可的股票。",
+  大型股穩健型:
+    "適合偏好成熟大型股、品質與投資紀律的投資者。風險程度偏低至中等，主要選股方向為大型股特性、RMW、CMA 與低波動表現較佳的股票。",
+  自訂型:
+    "適合希望自行調整選股條件的使用者。您可以自由設定各項因子的權重，系統將依照您的偏好進行股票評分與投資組合篩選。",
+};
+
 const initialSettings: PortfolioSettings = {
+  portfolioType: "均衡型",
   totalAmount: 1000000,
   stockCount: 5,
   minOverallStar: 3,
@@ -486,11 +561,40 @@ const initialSettings: PortfolioSettings = {
   industryCap: 45,
   oddLots: true,
   factorWeights: presets["均衡型"],
+  candidateOnly: false,
   allocationMethod: "score",
   maxSingleWeight: 30,
   minSingleWeight: 5,
   reserveCashPercent: 3,
 };
+
+function loadStoredCandidateIds() {
+  if (typeof window === "undefined") return [];
+  try {
+    const stored = window.localStorage.getItem("smartBetaCandidateIds");
+    if (!stored) return [];
+    const parsed = JSON.parse(stored) as string[];
+    return parsed.filter((id) => stocks.some((stock) => stock.stock_id === id));
+  } catch {
+    return [];
+  }
+}
+
+function loadStoredSettings() {
+  if (typeof window === "undefined") return initialSettings;
+  try {
+    const storedCandidateOnly = window.localStorage.getItem("smartBetaCandidateOnly");
+    const storedCustomWeights = window.localStorage.getItem("smartBetaCustomWeights");
+    const parsedWeights = storedCustomWeights ? (JSON.parse(storedCustomWeights) as Record<FactorKey, number>) : null;
+    return {
+      ...initialSettings,
+      candidateOnly: storedCandidateOnly === "true",
+      factorWeights: parsedWeights && !validateFactorWeights(parsedWeights).length ? parsedWeights : initialSettings.factorWeights,
+    };
+  } catch {
+    return initialSettings;
+  }
+}
 
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat("zh-TW", {
@@ -502,6 +606,40 @@ const formatCurrency = (value: number) =>
 const starText = (count: number) => "★★★★★".slice(0, count) + "☆☆☆☆☆".slice(0, 5 - count);
 const weightSum = (weights: Record<FactorKey, number>) =>
   Object.values(weights).reduce((sum, value) => sum + value, 0);
+const isValidWeightTotal = (weights: Record<FactorKey, number>) => Math.abs(weightSum(weights) - 100) <= 0.01;
+
+function averageWeights() {
+  const base = Math.floor((100 / factorKeys.length) * 100) / 100;
+  const weights = Object.fromEntries(factorKeys.map((factor) => [factor, base])) as Record<FactorKey, number>;
+  const gap = Number((100 - weightSum(weights)).toFixed(2));
+  weights[factorKeys[factorKeys.length - 1]] = Number((weights[factorKeys[factorKeys.length - 1]] + gap).toFixed(2));
+  return weights;
+}
+
+function validateFactorWeights(weights: Record<FactorKey, number>) {
+  const errors: string[] = [];
+  for (const factor of factorKeys) {
+    const value = weights[factor];
+    if (typeof value !== "number" || Number.isNaN(value) || !Number.isFinite(value)) {
+      errors.push(`${factorMeta[factor].label} 權重必須是有效數字。`);
+    } else if (value < 0 || value > 100) {
+      errors.push(`${factorMeta[factor].label} 權重必須介於 0% 至 100%。`);
+    }
+  }
+  if (Object.values(weights).every((value) => value === 0)) {
+    errors.push("所有因子權重皆為 0%，請至少設定一個有效權重。");
+  }
+  if (!isValidWeightTotal(weights)) {
+    errors.push(`目前因子權重總和為 ${weightSum(weights)}%，請將權重總和調整為 100%。`);
+  }
+  return errors;
+}
+
+function factorScoresFor(stock: Stock, settings: PortfolioSettings) {
+  return Object.fromEntries(
+    factorKeys.map((factor) => [factor, adjustedPercentile(stock, factor, settings.riskPreference)]),
+  ) as Record<FactorKey, number>;
+}
 
 function adjustedPercentile(stock: Stock, factor: FactorKey, riskPreference: RiskPreference) {
   if (factor === "volatility") return 100 - stock.volatility_percentile;
@@ -516,7 +654,7 @@ function adjustedPercentile(stock: Stock, factor: FactorKey, riskPreference: Ris
 
 function calculateScore(stock: Stock, settings: PortfolioSettings) {
   const total = weightSum(settings.factorWeights) || 1;
-  const weighted = (Object.keys(settings.factorWeights) as FactorKey[]).reduce((sum, factor) => {
+  const weighted = factorKeys.reduce((sum, factor) => {
     return sum + adjustedPercentile(stock, factor, settings.riskPreference) * (settings.factorWeights[factor] / total);
   }, 0);
   return Math.max(0, Math.min(100, stock.fatal_flag && !settings.excludeFatal ? weighted - 12 : weighted));
@@ -524,10 +662,10 @@ function calculateScore(stock: Stock, settings: PortfolioSettings) {
 
 function reasonsFor(stock: Stock) {
   const reasons = [];
-  if (stock.rmw_percentile >= 75) reasons.push(`RMW 百分位 ${stock.rmw_percentile}，品質因子相對突出`);
-  if (stock.momentum_percentile >= 75) reasons.push(`Momentum 百分位 ${stock.momentum_percentile}，近期動能明顯`);
-  if (stock.hmlo_percentile >= 75) reasons.push(`HML_o 百分位 ${stock.hmlo_percentile}，價值風格清楚`);
-  if (stock.volatility_percentile <= 35) reasons.push(`Volatility 百分位 ${stock.volatility_percentile}，歷史波動相對低`);
+  if (stock.rmw_percentile >= 75) reasons.push(`獲利因子百分位 ${stock.rmw_percentile}，品質因子相對突出`);
+  if (stock.momentum_percentile >= 75) reasons.push(`動能因子百分位 ${stock.momentum_percentile}，近期動能明顯`);
+  if (stock.hmlo_percentile >= 75) reasons.push(`價值因子百分位 ${stock.hmlo_percentile}，價值風格清楚`);
+  if (stock.volatility_percentile <= 35) reasons.push(`低波動因子百分位 ${stock.volatility_percentile}，歷史波動相對低`);
   if (!reasons.length) reasons.push("綜合因子表現符合目前篩選條件");
   return reasons.slice(0, 3);
 }
@@ -542,9 +680,35 @@ function riskReasonsFor(stock: Stock) {
   return risks;
 }
 
-function buildRecommendations(settings: PortfolioSettings): Recommendation[] {
+function exclusionReason(stock: Stock, settings: PortfolioSettings) {
+  if (stock.data_quality_flag !== "通過") return "資料品質標記為注意，無法納入本次因子評分。";
+  if (stock.overall_star < settings.minOverallStar) return `綜合星等低於 ${settings.minOverallStar} 星門檻。`;
+  if (settings.excludeFatal && stock.fatal_flag) return "已勾選排除致命組合，該股票觸發致命組合。";
+  if (settings.riskPreference === "conservative" && stock.risk_level === "高") return "保守風險偏好會排除高風險股票。";
+  return "";
+}
+
+function buildRecommendations(settings: PortfolioSettings, candidateIds: string[]): RecommendationResult {
   const available = settings.totalAmount * (1 - settings.reserveCashPercent / 100);
-  const filtered = stocks
+  const candidateSet = new Set(candidateIds);
+  const sourcePool = settings.candidateOnly ? stocks.filter((stock) => candidateSet.has(stock.stock_id)) : stocks;
+  const excludedCandidates = settings.candidateOnly
+    ? candidateIds
+        .map((id) => stocks.find((stock) => stock.stock_id === id))
+        .filter((stock): stock is Stock => Boolean(stock))
+        .map((stock) => ({
+          stock_id: stock.stock_id,
+          stock_name: stock.stock_name,
+          reason: exclusionReason(stock, settings),
+        }))
+        .filter((item) => item.reason)
+    : [];
+  const validationErrors = validateFactorWeights(settings.factorWeights);
+  if (settings.candidateOnly && candidateIds.length === 0) {
+    validationErrors.push("請先加入至少一檔候選股票。");
+  }
+
+  const filtered = sourcePool
     .filter((stock) => stock.data_quality_flag === "通過")
     .filter((stock) => stock.overall_star >= settings.minOverallStar)
     .filter((stock) => (settings.excludeFatal ? !stock.fatal_flag : true))
@@ -552,21 +716,29 @@ function buildRecommendations(settings: PortfolioSettings): Recommendation[] {
     .map((stock) => ({ stock, score: calculateScore(stock, settings) }))
     .sort((a, b) => b.score - a.score);
 
+  if (settings.candidateOnly && filtered.length < settings.stockCount) {
+    validationErrors.push(
+      `目前只有 ${filtered.length} 檔候選股票可用，但本投資組合需要 ${settings.stockCount} 檔股票。請增加候選股票、降低持股數量，或取消勾選「僅使用候選股票」。`,
+    );
+  }
+
   const selected: typeof filtered = [];
   const industryBudget = new Map<string, number>();
-  for (const item of filtered) {
-    if (selected.length >= settings.stockCount) break;
-    const currentIndustryCount = industryBudget.get(item.stock.industry) || 0;
-    const projectedIndustryShare = ((currentIndustryCount + 1) / settings.stockCount) * 100;
-    if (settings.limitIndustry && projectedIndustryShare > settings.industryCap) continue;
-    industryBudget.set(item.stock.industry, currentIndustryCount + 1);
-    selected.push(item);
+  if (!validationErrors.length || !settings.candidateOnly) {
+    for (const item of filtered) {
+      if (selected.length >= settings.stockCount) break;
+      const currentIndustryCount = industryBudget.get(item.stock.industry) || 0;
+      const projectedIndustryShare = ((currentIndustryCount + 1) / settings.stockCount) * 100;
+      if (settings.limitIndustry && projectedIndustryShare > settings.industryCap) continue;
+      industryBudget.set(item.stock.industry, currentIndustryCount + 1);
+      selected.push(item);
+    }
   }
 
   const scoreTotal = selected.reduce((sum, item) => sum + item.score, 0) || 1;
   let remainingCash = settings.totalAmount;
 
-  return selected.map((item, index) => {
+  const recommendations = selected.map((item, index) => {
     const baseWeight =
       settings.allocationMethod === "equal" ? 100 / selected.length : (item.score / scoreTotal) * 100;
     const allocation_weight = Math.min(
@@ -581,6 +753,7 @@ function buildRecommendations(settings: PortfolioSettings): Recommendation[] {
     return {
       ...item.stock,
       custom_score: Number(item.score.toFixed(2)),
+      factor_scores: factorScoresFor(item.stock, settings),
       rank: index + 1,
       allocation_weight,
       target_amount,
@@ -591,6 +764,25 @@ function buildRecommendations(settings: PortfolioSettings): Recommendation[] {
       risk_reasons: riskReasonsFor(item.stock),
     };
   });
+
+  return {
+    recommendations,
+    poolMode: settings.candidateOnly ? "僅使用候選股票" : "完整股票池",
+    candidateTotal: candidateIds.length,
+    eligibleCandidateCount: settings.candidateOnly ? filtered.length : 0,
+    excludedCandidates,
+    validationErrors,
+    requestPayload: {
+      portfolioType: settings.portfolioType === "自訂型" ? "custom" : settings.portfolioType,
+      factorWeights: Object.fromEntries(
+        factorKeys.map((factor) => [factor, Number((settings.factorWeights[factor] / 100).toFixed(4))]),
+      ) as Record<FactorKey, number>,
+      candidateOnly: settings.candidateOnly,
+      candidateTickers: candidateIds,
+      stockCount: settings.stockCount,
+      riskPreference: settings.riskPreference,
+    },
+  };
 }
 
 function AiStockExplanation({ stock }: { stock: Stock }) {
@@ -608,10 +800,12 @@ function StockCard({
   stock,
   onDetail,
   onCandidate,
+  isCandidate,
 }: {
   stock: Stock;
   onDetail: () => void;
   onCandidate: () => void;
+  isCandidate: boolean;
 }) {
   return (
     <article className="card stock-card">
@@ -640,7 +834,7 @@ function StockCard({
           查看詳情
         </button>
         <button className="button ghost" onClick={onCandidate}>
-          加入候選
+          {isCandidate ? "移除候選" : "加入候選"}
         </button>
       </div>
     </article>
@@ -667,10 +861,10 @@ function FactorCard({ stock, factor }: { stock: Stock; factor: FactorKey }) {
   return (
     <article className="card factor-card">
       <div className="row" style={{ justifyContent: "space-between" }}>
-        <strong title={factorHelp[factor]}>{factorLabels[factor]}</strong>
+        <strong title={factorMeta[factor].help}>{factorMeta[factor].label}</strong>
         <span className="stars">{starText(star)}</span>
       </div>
-      <div className="meter" aria-label={`${factorLabels[factor]} 百分位 ${percentile}`}>
+      <div className="meter" aria-label={`${factorMeta[factor].label} 百分位 ${percentile}`}>
         <span style={{ width: `${percentile}%` }} />
       </div>
       <div className="grid two">
@@ -678,7 +872,7 @@ function FactorCard({ stock, factor }: { stock: Stock; factor: FactorKey }) {
         <span>百分位：{percentile}</span>
       </div>
       <span className="tag">{direction}</span>
-      <p className="subtle">{factorHelp[factor]}</p>
+      <p className="subtle">{factorMeta[factor].help}</p>
     </article>
   );
 }
@@ -694,12 +888,18 @@ export default function Home() {
   const [selectedId, setSelectedId] = useState(stocks[0].stock_id);
   const [candidateIds, setCandidateIds] = useState<string[]>([]);
   const [step, setStep] = useState(1);
-  const [preset, setPreset] = useState("均衡型");
+  const [preset, setPreset] = useState<PortfolioType>("均衡型");
+  const [applyPreset, setApplyPreset] = useState<Exclude<PortfolioType, "自訂型">>("均衡型");
   const [settings, setSettings] = useState<PortfolioSettings>(initialSettings);
+  const [storageReady, setStorageReady] = useState(false);
 
   const selectedStock = stocks.find((stock) => stock.stock_id === selectedId) || stocks[0];
   const industries = ["全部", ...Array.from(new Set(stocks.map((stock) => stock.industry)))];
-  const recommendations = useMemo(() => buildRecommendations(settings), [settings]);
+  const portfolioResult = useMemo(() => buildRecommendations(settings, candidateIds), [settings, candidateIds]);
+  const recommendations = portfolioResult.recommendations;
+  const candidateStocks = useMemo(() => stocks.filter((stock) => candidateIds.includes(stock.stock_id)), [candidateIds]);
+  const weightErrors = validateFactorWeights(settings.factorWeights);
+  const canGenerate = portfolioResult.validationErrors.length === 0;
   const filteredStocks = useMemo(() => {
     return stocks
       .filter((stock) => `${stock.stock_name}${stock.stock_id}`.toLowerCase().includes(query.toLowerCase()))
@@ -718,8 +918,29 @@ export default function Home() {
       });
   }, [query, industry, minStar, risk, excludeFatal, sortBy, settings]);
 
-  const addCandidate = (id: string) => {
-    setCandidateIds((current) => (current.includes(id) ? current : [...current, id]));
+  useEffect(() => {
+    queueMicrotask(() => {
+      setCandidateIds(loadStoredCandidateIds());
+      setSettings(loadStoredSettings());
+      setStorageReady(true);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!storageReady) return;
+    window.localStorage.setItem("smartBetaCandidateIds", JSON.stringify(candidateIds));
+  }, [candidateIds, storageReady]);
+
+  useEffect(() => {
+    if (!storageReady) return;
+    window.localStorage.setItem("smartBetaCandidateOnly", String(settings.candidateOnly));
+    if (settings.portfolioType === "自訂型") {
+      window.localStorage.setItem("smartBetaCustomWeights", JSON.stringify(settings.factorWeights));
+    }
+  }, [settings.candidateOnly, settings.factorWeights, settings.portfolioType, storageReady]);
+
+  const toggleCandidate = (id: string) => {
+    setCandidateIds((current) => (current.includes(id) ? current.filter((item) => item !== id) : [...current, id]));
   };
 
   const updateSetting = <K extends keyof PortfolioSettings>(key: K, value: PortfolioSettings[K]) => {
@@ -727,9 +948,10 @@ export default function Home() {
   };
 
   const updateWeight = (factor: FactorKey, value: number) => {
+    const bounded = Math.max(0, Math.min(100, Number.isFinite(value) ? value : 0));
     setSettings((current) => ({
       ...current,
-      factorWeights: { ...current.factorWeights, [factor]: value },
+      factorWeights: { ...current.factorWeights, [factor]: bounded },
     }));
   };
 
@@ -835,7 +1057,8 @@ export default function Home() {
                     <StockCard
                       key={`${title}-${stock.stock_id}`}
                       stock={stock}
-                      onCandidate={() => addCandidate(stock.stock_id)}
+                      isCandidate={candidateIds.includes(stock.stock_id)}
+                      onCandidate={() => toggleCandidate(stock.stock_id)}
                       onDetail={() => {
                         setSelectedId(stock.stock_id);
                         navigate("detail");
@@ -949,8 +1172,8 @@ export default function Home() {
                           >
                             詳情
                           </button>
-                          <button className="button ghost" onClick={() => addCandidate(stock.stock_id)}>
-                            候選
+                          <button className="button ghost" onClick={() => toggleCandidate(stock.stock_id)}>
+                            {candidateIds.includes(stock.stock_id) ? "移除候選" : "候選"}
                           </button>
                         </div>
                       </td>
@@ -1043,8 +1266,8 @@ export default function Home() {
               <div className="card">
                 <h2 className="panel-title">下一步</h2>
                 <div className="grid">
-                  <button className="button" onClick={() => addCandidate(selectedStock.stock_id)}>
-                    加入候選清單
+                  <button className="button" onClick={() => toggleCandidate(selectedStock.stock_id)}>
+                    {candidateIds.includes(selectedStock.stock_id) ? "移除候選清單" : "加入候選清單"}
                   </button>
                   <button className="button secondary" onClick={() => navigate("builder")}>
                     加入投資組合
@@ -1066,7 +1289,7 @@ export default function Home() {
               <h2>投資組合建立</h2>
               <p>四步驟區分投資條件、因子偏好與資金配置，避免混淆評分權重和資金權重。</p>
             </div>
-            <span className={weightSum(settings.factorWeights) === 100 ? "tag" : "tag warn"}>
+            <span className={isValidWeightTotal(settings.factorWeights) ? "tag" : "tag warn"}>
               因子權重總和 {weightSum(settings.factorWeights)}%
             </span>
           </div>
@@ -1157,32 +1380,112 @@ export default function Home() {
                     使用零股
                   </label>
                 </div>
+                <div className="candidate-option">
+                  <label className="row" htmlFor="candidate-only">
+                    <input
+                      id="candidate-only"
+                      type="checkbox"
+                      checked={settings.candidateOnly}
+                      aria-describedby="candidate-only-help"
+                      onChange={(event) => updateSetting("candidateOnly", event.target.checked)}
+                    />
+                    <strong>僅使用候選股票</strong>
+                    <span
+                      className="info-dot"
+                      tabIndex={0}
+                      title="勾選後，系統只會從您已加入候選清單的股票中篩選並建立投資組合；未勾選時，系統會從完整股票池中進行篩選。"
+                    >
+                      ⓘ
+                    </span>
+                  </label>
+                  <p id="candidate-only-help" className="subtle">
+                    目前候選股票：{candidateIds.length} 檔。勾選後，最終結果只會包含候選清單中的股票。
+                  </p>
+                  {candidateStocks.length > 0 && (
+                    <div className="factor-weight-list" aria-label="目前候選股票清單">
+                      {candidateStocks.map((stock) => (
+                        <span key={stock.stock_id}>
+                          {stock.stock_id} {stock.stock_name}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  {settings.candidateOnly && (
+                    <p className={candidateIds.length ? "notice compact" : "warning-box"}>
+                      {candidateIds.length
+                        ? "候選股票限定模式已開啟，最終結果只會包含候選清單中的股票。"
+                        : "請先加入至少一檔候選股票。"}
+                    </p>
+                  )}
+                  <button className="button secondary" type="button" onClick={() => navigate("explore")}>
+                    前往選股頁面
+                  </button>
+                </div>
               </div>
             )}
             {step === 2 && (
               <div className="grid">
                 <div className="preset-grid">
-                  {Object.keys(presets).map((name) => (
+                  {(Object.keys(portfolioDescriptions) as PortfolioType[]).map((name) => (
                     <button
                       key={name}
                       className={preset === name ? "preset active" : "preset"}
                       onClick={() => {
                         setPreset(name);
-                        updateSetting("factorWeights", presets[name]);
+                        updateSetting("portfolioType", name);
+                        if (name !== "自訂型") {
+                          updateSetting("factorWeights", presets[name]);
+                        }
                       }}
+                      aria-pressed={preset === name}
                     >
                       <strong>{name}</strong>
-                      <p className="subtle">一鍵帶入預設因子偏好。</p>
+                      <p className="subtle">{portfolioDescriptions[name]}</p>
                     </button>
                   ))}
                 </div>
-                {(Object.keys(settings.factorWeights) as FactorKey[]).map((factor) => (
+                {settings.portfolioType === "自訂型" && (
+                  <div className="weight-actions">
+                    <button className="button secondary" type="button" onClick={() => updateSetting("factorWeights", averageWeights())}>
+                      平均分配
+                    </button>
+                    <button className="button secondary" type="button" onClick={() => updateSetting("factorWeights", initialSettings.factorWeights)}>
+                      重設權重
+                    </button>
+                    <select
+                      className="select"
+                      aria-label="選擇要套用的既有投資組合類型權重"
+                      value={applyPreset}
+                      onChange={(event) => setApplyPreset(event.target.value as Exclude<PortfolioType, "自訂型">)}
+                    >
+                      {(Object.keys(presets) as Exclude<PortfolioType, "自訂型">[]).map((name) => (
+                        <option key={name} value={name}>
+                          {name}
+                        </option>
+                      ))}
+                    </select>
+                    <button className="button secondary" type="button" onClick={() => updateSetting("factorWeights", presets[applyPreset])}>
+                      套用目前類型權重
+                    </button>
+                  </div>
+                )}
+                <p className={isValidWeightTotal(settings.factorWeights) ? "notice compact" : "warning-box"}>
+                  目前權重總和：{weightSum(settings.factorWeights)}%
+                  {!isValidWeightTotal(settings.factorWeights) && "。請將權重總和調整為 100%。"}
+                </p>
+                {factorKeys.map((factor) => (
                   <label className="slider-row" key={factor}>
-                    <span title={factorHelp[factor]}>{factorLabels[factor]}</span>
+                    <span className="factor-name">
+                      {factorMeta[factor].label}
+                      <span className="info-dot" tabIndex={0} title={factorMeta[factor].help}>
+                        ⓘ
+                      </span>
+                      <small>{factorMeta[factor].shortLabel}</small>
+                    </span>
                     <input
                       type="range"
                       min={0}
-                      max={50}
+                      max={100}
                       value={settings.factorWeights[factor]}
                       onChange={(event) => updateWeight(factor, Number(event.target.value))}
                     />
@@ -1196,9 +1499,11 @@ export default function Home() {
                     />
                   </label>
                 ))}
-                {weightSum(settings.factorWeights) !== 100 && (
-                  <p className="warning-box">輸入錯誤：因子權重總和必須等於 100%，目前為 {weightSum(settings.factorWeights)}%。</p>
-                )}
+                {weightErrors.map((error) => (
+                  <p className="warning-box" key={error}>
+                    {error}
+                  </p>
+                ))}
               </div>
             )}
             {step === 3 && (
@@ -1248,17 +1553,24 @@ export default function Home() {
                 <div className="card">
                   <h2 className="panel-title">設定摘要</h2>
                   <p>投資金額：{formatCurrency(settings.totalAmount)}</p>
+                  <p>投資組合類型：{settings.portfolioType}</p>
                   <p>股票數量：{settings.stockCount}</p>
                   <p>風險偏好：{settings.riskPreference === "conservative" ? "保守" : settings.riskPreference === "balanced" ? "均衡" : "積極"}</p>
                   <p>配置方式：{settings.allocationMethod === "equal" ? "等額配置" : "依評分配置"}</p>
                   <p>排除致命組合：{settings.excludeFatal ? "是" : "否"}</p>
+                  <p>股票池模式：{settings.candidateOnly ? `僅使用候選股票（${candidateIds.length} 檔）` : "完整股票池"}</p>
                 </div>
                 <div className="card">
                   <h2 className="panel-title">可產生結果</h2>
                   <p className="subtle">
                     符合條件股票不足時，系統會保留條件並提示原因，不會自行忽略條件。
                   </p>
-                  <button className="button" disabled={weightSum(settings.factorWeights) !== 100} onClick={() => navigate("results")}>
+                  {portfolioResult.validationErrors.map((error) => (
+                    <p className="warning-box" key={error}>
+                      {error}
+                    </p>
+                  ))}
+                  <button className="button" disabled={!canGenerate} onClick={() => navigate("results")}>
                     產生智能投資組合
                   </button>
                 </div>
@@ -1287,12 +1599,20 @@ export default function Home() {
               調整設定
             </button>
           </div>
-          {recommendations.length < settings.stockCount && (
+          {portfolioResult.validationErrors.map((error) => (
+            <p className="warning-box" key={error}>
+              {error}
+            </p>
+          ))}
+          {!portfolioResult.validationErrors.length && recommendations.length < settings.stockCount && (
             <p className="warning-box">
               符合條件股票不足：目前僅 {recommendations.length} 支。可能原因包含最低星等、排除致命組合、保守風險偏好或產業上限過嚴。建議放寬最低星等、提高產業上限或取消排除致命組合。
             </p>
           )}
           <section className="summary-strip">
+            <div className="kpi">
+              股票池模式<strong>{portfolioResult.poolMode}</strong>
+            </div>
             <div className="kpi">
               投資總金額<strong>{formatCurrency(settings.totalAmount)}</strong>
             </div>
@@ -1306,12 +1626,51 @@ export default function Home() {
               股票數量<strong>{recommendations.length}</strong>
             </div>
             <div className="kpi">
+              參與評分<strong>{settings.candidateOnly ? portfolioResult.eligibleCandidateCount : stocks.filter((stock) => !exclusionReason(stock, settings)).length}</strong>
+            </div>
+            <div className="kpi">
               平均星等<strong>{(recommendations.reduce((sum, item) => sum + item.overall_star, 0) / Math.max(1, recommendations.length)).toFixed(1)}</strong>
             </div>
             <div className="kpi">
               風險等級<strong>{recommendations.some((item) => item.risk_level === "高") ? "高" : "中"}</strong>
             </div>
           </section>
+          <section className="grid two result-meta">
+            <div className="card">
+              <h2 className="panel-title">本次設定</h2>
+              <p>投資組合類型：{settings.portfolioType}</p>
+              <p>股票池：{portfolioResult.poolMode}</p>
+              {settings.candidateOnly && (
+                <>
+                  <p>本次候選股票總數：{portfolioResult.candidateTotal}</p>
+                  <p>成功取得資料並參與評分：{portfolioResult.eligibleCandidateCount}</p>
+                  <p>最終入選股票數量：{recommendations.length}</p>
+                </>
+              )}
+            </div>
+            <div className="card">
+              <h2 className="panel-title">本次因子權重</h2>
+              <div className="factor-weight-list">
+                {factorKeys.map((factor) => (
+                  <span key={factor}>
+                    {factorMeta[factor].label}：{settings.factorWeights[factor]}%
+                  </span>
+                ))}
+              </div>
+            </div>
+          </section>
+          {settings.candidateOnly && portfolioResult.excludedCandidates.length > 0 && (
+            <section className="card result-meta">
+              <h2 className="panel-title">候選股票排除原因</h2>
+              <div className="grid">
+                {portfolioResult.excludedCandidates.map((item) => (
+                  <p className="warning-box" key={item.stock_id}>
+                    {item.stock_id} {item.stock_name}：{item.reason}
+                  </p>
+                ))}
+              </div>
+            </section>
+          )}
           <section style={{ marginTop: 22 }} className="table-wrap">
             <table>
               <thead>
@@ -1320,6 +1679,7 @@ export default function Home() {
                   <th>股票</th>
                   <th>分數</th>
                   <th>星等</th>
+                  <th>各因子分數</th>
                   <th>配置比例</th>
                   <th>配置金額</th>
                   <th>股數</th>
@@ -1339,6 +1699,15 @@ export default function Home() {
                     </td>
                     <td>{item.custom_score}</td>
                     <td className="stars">{starText(item.overall_star)}</td>
+                    <td>
+                      <div className="factor-score-list">
+                        {factorKeys.map((factor) => (
+                          <span key={factor}>
+                            {factorMeta[factor].label} {item.factor_scores[factor]}
+                          </span>
+                        ))}
+                      </div>
+                    </td>
                     <td>{item.allocation_weight}%</td>
                     <td>{formatCurrency(item.actual_amount)}</td>
                     <td>{item.purchasable_shares.toLocaleString("zh-TW")}</td>

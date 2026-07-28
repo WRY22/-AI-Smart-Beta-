@@ -421,7 +421,7 @@ button:disabled {
 
 table {
   width: 100%;
-  min-width: 900px;
+  min-width: 1080px;
   border-collapse: collapse;
 }
 
@@ -525,7 +525,7 @@ tbody tr:hover {
 }
 
 .preset {
-  min-height: 82px;
+  min-height: 142px;
   border: 1px solid var(--line);
   border-radius: 6px;
   padding: 12px;
@@ -546,7 +546,7 @@ tbody tr:hover {
 
 .slider-row {
   display: grid;
-  grid-template-columns: 128px minmax(120px, 1fr) 72px;
+  grid-template-columns: minmax(170px, 220px) minmax(120px, 1fr) 84px;
   gap: 12px;
   align-items: center;
   min-height: 48px;
@@ -556,6 +556,55 @@ tbody tr:hover {
 
 .slider-row input {
   accent-color: var(--brand);
+}
+
+.candidate-option {
+  display: grid;
+  grid-column: 1 / -1;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 14px;
+  background: var(--surface-muted);
+}
+
+.info-dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  color: var(--info);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.info-dot:focus {
+  outline: 2px solid rgba(40, 101, 140, 0.35);
+  outline-offset: 2px;
+  border-radius: 999px;
+}
+
+.factor-name {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  align-items: center;
+  color: #3f4c45;
+  font-weight: 800;
+}
+
+.factor-name small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.weight-actions {
+  display: grid;
+  grid-template-columns: max-content max-content minmax(180px, 260px) max-content;
+  gap: 10px;
+  align-items: center;
 }
 
 .summary-strip {
@@ -587,6 +636,35 @@ tbody tr:hover {
   padding: 13px;
   color: var(--muted);
   background: var(--surface-muted);
+}
+
+.notice.compact {
+  margin: 0;
+  padding: 10px 12px;
+}
+
+.result-meta {
+  margin-top: 22px;
+}
+
+.factor-weight-list,
+.factor-score-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.factor-weight-list span,
+.factor-score-list span {
+  display: inline-flex;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 4px 8px;
+  color: #3f4c45;
+  background: var(--surface-muted);
+  font-size: 12px;
+  font-weight: 750;
+  white-space: nowrap;
 }
 
 .empty-state {
@@ -667,7 +745,8 @@ tbody tr:hover {
 
   .grid.three,
   .grid.two,
-  .preset-grid {
+  .preset-grid,
+  .weight-actions {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -686,6 +765,7 @@ tbody tr:hover {
   .grid.three,
   .grid.two,
   .preset-grid,
+  .weight-actions,
   .summary-strip {
     grid-template-columns: 1fr;
   }
