@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 type View = "home" | "explore" | "detail" | "builder" | "results" | "about";
 type RiskPreference = "conservative" | "balanced" | "aggressive";
@@ -112,41 +113,47 @@ const factorMeta: Record<FactorKey, { label: string; shortLabel: string; help: s
   beta: {
     label: "市場敏感因子",
     shortLabel: "Beta",
-    help: "衡量股票對整體市場波動的敏感度。保守偏好會降低高 Beta 股票分數，積極偏好則較能接受高市場曝險。",
+    help: "衡量股票對整體市場波動的敏感度。分數較高代表股票較容易跟隨市場上漲或下跌；提高此因子權重後，積極偏好會更接受高市場曝險，保守偏好則會降低高 Beta 股票分數。",
   },
   smb: {
     label: "規模因子",
     shortLabel: "SMB",
-    help: "衡量大型股與小型股風格。正值偏小型股，負值偏大型股；保守偏好下會較偏好大型股特性。",
+    help: "衡量大型股與小型股風格。依目前程式邏輯，SMB 分數較高代表較偏小型股；保守偏好會反向計分、較偏好大型股特性。提高此因子權重後，系統會更重視規模風格對排序的影響。",
   },
   rmw: {
     label: "獲利因子",
     shortLabel: "RMW",
-    help: "評估公司的獲利能力與品質特徵，百分位越高代表相對市場樣本的獲利風格越突出。",
+    help: "衡量公司的獲利能力、財務穩健度及營運品質。分數較高通常代表公司獲利狀況、資本使用效率或財務結構相對穩健；提高此因子權重後，系統會更重視基本面品質較佳的公司。",
   },
   cma: {
     label: "投資風格因子",
     shortLabel: "CMA",
-    help: "衡量公司投資行為偏保守或偏積極擴張，正值通常代表投資配置較保守穩健。",
+    help: "衡量公司投資行為偏保守或偏積極擴張。分數較高通常代表投資配置較保守穩健；提高此因子權重後，系統會更偏好投資紀律較明確、擴張節奏較穩的股票。",
   },
   hmlo: {
     label: "價值因子",
     shortLabel: "HML_o",
-    help: "使用正交化價值因子辨識價格相對基本面是否具價值風格，百分位越高代表價值特徵越清楚。",
+    help: "衡量股票價格相對公司基本面是否偏低。價值因子分數較高，通常表示股票相對營收、獲利、淨資產或其他基本面指標可能較便宜；提高此因子權重後，系統會更偏好估值相對較低的股票。",
   },
   momentum: {
     label: "動能因子",
     shortLabel: "Momentum",
-    help: "評估股票近期相對強弱與趨勢延續性，百分位越高代表近期動能越明顯。",
+    help: "衡量股票近期價格趨勢與相對強弱。分數較高通常代表股票近期走勢相對強勢；提高此因子權重後，系統會更偏好近期具有上漲趨勢的股票，但也可能承受趨勢反轉風險。",
   },
   volatility: {
     label: "低波動因子",
     shortLabel: "Volatility",
-    help: "衡量歷史波動度；建立投資組合時沿用原本反向計分，偏好波動較小、風險相對較低的股票。",
+    help: "衡量股票價格波動程度。建立投資組合時沿用原本反向計分，低波動分數較高通常代表過去價格變動相對穩定；提高此因子權重後，系統會更偏好波動較小、風險相對較低的股票。",
   },
 };
 
 const factorKeys: FactorKey[] = ["beta", "smb", "rmw", "cma", "hmlo", "momentum", "volatility"];
+
+const candidateOnlyHelp = {
+  title: "僅使用候選股票",
+  body:
+    "勾選後，系統只會從您已加入候選清單的股票中進行評分與篩選，最終投資組合不會出現候選清單以外的股票。未勾選時，系統會從完整股票池中建立投資組合，候選股票不保證一定入選。若候選股票數量少於投資組合所需的股票數量，系統將要求您增加候選股票、降低持股數量，或取消此選項，不會自動加入候選清單以外的股票。",
+};
 
 const stocks: Stock[] = [
   {
@@ -841,6 +848,92 @@ function StockCard({
   );
 }
 
+function InfoButton({
+  id,
+  title,
+  body,
+  activeInfoId,
+  setActiveInfoId,
+  ariaLabel,
+}: {
+  id: string;
+  title: string;
+  body: string;
+  activeInfoId: string | null;
+  setActiveInfoId: (id: string | null) => void;
+  ariaLabel: string;
+}) {
+  const buttonRef = useRef<HTMLButtonElement | null>(null);
+  const isOpen = activeInfoId === id;
+  const popoverId = `${id}-popover`;
+  const [position, setPosition] = useState({ top: 0, left: 0 });
+
+  useEffect(() => {
+    if (!isOpen || !buttonRef.current) return;
+    const rect = buttonRef.current.getBoundingClientRect();
+    const popover = document.getElementById(popoverId);
+    const popoverHeight = popover?.getBoundingClientRect().height ?? 150;
+    const width = Math.min(340, window.innerWidth - 24);
+    const aboveTop = rect.top - popoverHeight - 8;
+    const belowTop = rect.bottom + 8;
+    setPosition({
+      top: aboveTop >= 12 ? aboveTop : belowTop,
+      left: Math.min(Math.max(12, rect.left - width + rect.width), window.innerWidth - width - 12),
+    });
+  }, [isOpen, popoverId]);
+
+  return (
+    <>
+      <button
+        ref={buttonRef}
+        type="button"
+        className={isOpen ? "info-dot active" : "info-dot"}
+        aria-label={ariaLabel}
+        aria-expanded={isOpen}
+        aria-controls={popoverId}
+        aria-describedby={isOpen ? popoverId : undefined}
+        data-info-button="true"
+        onClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          setActiveInfoId(isOpen ? null : id);
+        }}
+        onKeyDown={(event) => {
+          if (event.key !== "Enter" && event.key !== " ") return;
+          event.preventDefault();
+          event.stopPropagation();
+          setActiveInfoId(isOpen ? null : id);
+        }}
+      >
+        <span aria-hidden="true">i</span>
+      </button>
+      {isOpen &&
+        createPortal(
+          <div
+            id={popoverId}
+            className="info-popover"
+            role="dialog"
+            aria-label={title}
+            data-info-popover="true"
+            style={{ top: position.top, left: position.left }}
+          >
+            <button
+              type="button"
+              className="popover-close"
+              aria-label={`關閉${title}說明`}
+              onClick={() => setActiveInfoId(null)}
+            >
+              ×
+            </button>
+            <strong>{title}</strong>
+            <p>{body}</p>
+          </div>,
+          document.body,
+        )}
+    </>
+  );
+}
+
 function FactorCard({ stock, factor }: { stock: Stock; factor: FactorKey }) {
   const percentile = stock[`${factor}_percentile` as keyof Stock] as number;
   const exposureKey = factor === "momentum" ? "momentum_value" : factor === "volatility" ? "volatility_value" : `${factor}_exposure`;
@@ -892,6 +985,7 @@ export default function Home() {
   const [applyPreset, setApplyPreset] = useState<Exclude<PortfolioType, "自訂型">>("均衡型");
   const [settings, setSettings] = useState<PortfolioSettings>(initialSettings);
   const [storageReady, setStorageReady] = useState(false);
+  const [activeInfoId, setActiveInfoId] = useState<string | null>(null);
 
   const selectedStock = stocks.find((stock) => stock.stock_id === selectedId) || stocks[0];
   const industries = ["全部", ...Array.from(new Set(stocks.map((stock) => stock.industry)))];
@@ -938,6 +1032,24 @@ export default function Home() {
       window.localStorage.setItem("smartBetaCustomWeights", JSON.stringify(settings.factorWeights));
     }
   }, [settings.candidateOnly, settings.factorWeights, settings.portfolioType, storageReady]);
+
+  useEffect(() => {
+    if (!activeInfoId) return;
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target as Element | null;
+      if (target?.closest("[data-info-button='true'], [data-info-popover='true']")) return;
+      setActiveInfoId(null);
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setActiveInfoId(null);
+    };
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [activeInfoId]);
 
   const toggleCandidate = (id: string) => {
     setCandidateIds((current) => (current.includes(id) ? current.filter((item) => item !== id) : [...current, id]));
@@ -1381,23 +1493,26 @@ export default function Home() {
                   </label>
                 </div>
                 <div className="candidate-option">
-                  <label className="row" htmlFor="candidate-only">
-                    <input
-                      id="candidate-only"
-                      type="checkbox"
-                      checked={settings.candidateOnly}
-                      aria-describedby="candidate-only-help"
-                      onChange={(event) => updateSetting("candidateOnly", event.target.checked)}
+                  <div className="candidate-control">
+                    <label className="row" htmlFor="candidate-only">
+                      <input
+                        id="candidate-only"
+                        type="checkbox"
+                        checked={settings.candidateOnly}
+                        aria-describedby="candidate-only-help"
+                        onChange={(event) => updateSetting("candidateOnly", event.target.checked)}
+                      />
+                      <strong>僅使用候選股票</strong>
+                    </label>
+                    <InfoButton
+                      id="candidate-only-info"
+                      title={candidateOnlyHelp.title}
+                      body={candidateOnlyHelp.body}
+                      activeInfoId={activeInfoId}
+                      setActiveInfoId={setActiveInfoId}
+                      ariaLabel="查看僅使用候選股票說明"
                     />
-                    <strong>僅使用候選股票</strong>
-                    <span
-                      className="info-dot"
-                      tabIndex={0}
-                      title="勾選後，系統只會從您已加入候選清單的股票中篩選並建立投資組合；未勾選時，系統會從完整股票池中進行篩選。"
-                    >
-                      ⓘ
-                    </span>
-                  </label>
+                  </div>
                   <p id="candidate-only-help" className="subtle">
                     目前候選股票：{candidateIds.length} 檔。勾選後，最終結果只會包含候選清單中的股票。
                   </p>
@@ -1474,12 +1589,17 @@ export default function Home() {
                   {!isValidWeightTotal(settings.factorWeights) && "。請將權重總和調整為 100%。"}
                 </p>
                 {factorKeys.map((factor) => (
-                  <label className="slider-row" key={factor}>
+                  <div className="slider-row" key={factor}>
                     <span className="factor-name">
                       {factorMeta[factor].label}
-                      <span className="info-dot" tabIndex={0} title={factorMeta[factor].help}>
-                        ⓘ
-                      </span>
+                      <InfoButton
+                        id={`factor-${factor}-info`}
+                        title={factorMeta[factor].label}
+                        body={factorMeta[factor].help}
+                        activeInfoId={activeInfoId}
+                        setActiveInfoId={setActiveInfoId}
+                        ariaLabel={`查看${factorMeta[factor].label}說明`}
+                      />
                       <small>{factorMeta[factor].shortLabel}</small>
                     </span>
                     <input
@@ -1487,6 +1607,7 @@ export default function Home() {
                       min={0}
                       max={100}
                       value={settings.factorWeights[factor]}
+                      aria-label={`${factorMeta[factor].label}權重滑桿`}
                       onChange={(event) => updateWeight(factor, Number(event.target.value))}
                     />
                     <input
@@ -1495,9 +1616,10 @@ export default function Home() {
                       min={0}
                       max={100}
                       value={settings.factorWeights[factor]}
+                      aria-label={`${factorMeta[factor].label}權重數值`}
                       onChange={(event) => updateWeight(factor, Number(event.target.value))}
                     />
-                  </label>
+                  </div>
                 ))}
                 {weightErrors.map((error) => (
                   <p className="warning-box" key={error}>

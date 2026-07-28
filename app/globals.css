@@ -568,21 +568,97 @@ tbody tr:hover {
   background: var(--surface-muted);
 }
 
+.candidate-control {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+
 .info-dot {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
-  height: 20px;
+  width: 36px;
+  height: 36px;
+  border: 1px solid transparent;
+  border-radius: 999px;
   color: var(--info);
-  font-size: 13px;
+  background: transparent;
+  font-size: 14px;
   font-weight: 800;
+  line-height: 1;
+  cursor: pointer;
 }
 
-.info-dot:focus {
+.info-dot span {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+}
+
+.info-dot:hover,
+.info-dot.active {
+  color: var(--brand-dark);
+  background: #e5efeb;
+  border-color: var(--line);
+}
+
+.info-dot:focus-visible {
   outline: 2px solid rgba(40, 101, 140, 0.35);
   outline-offset: 2px;
+}
+
+.info-popover {
+  position: fixed;
+  z-index: 1000;
+  width: min(340px, calc(100vw - 24px));
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  padding: 14px 42px 14px 14px;
+  color: var(--ink);
+  background: var(--surface);
+  box-shadow: 0 16px 36px rgba(20, 32, 27, 0.16);
+}
+
+.info-popover strong {
+  display: block;
+  margin-bottom: 7px;
+  color: var(--brand-dark);
+  font-size: 14px;
+}
+
+.info-popover p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.popover-close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid transparent;
   border-radius: 999px;
+  color: var(--muted);
+  background: transparent;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.popover-close:hover,
+.popover-close:focus-visible {
+  color: var(--ink);
+  background: var(--surface-muted);
+  outline: none;
 }
 
 .factor-name {
