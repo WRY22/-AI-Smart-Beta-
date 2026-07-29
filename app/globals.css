@@ -50,6 +50,8 @@ button:disabled {
 
 .app-shell {
   min-height: 100vh;
+  display: flex;
+  flex-direction: column;
 }
 
 .topbar {
@@ -57,7 +59,7 @@ button:disabled {
   top: 0;
   z-index: 20;
   display: grid;
-  grid-template-columns: max-content minmax(0, 1fr) minmax(220px, 320px);
+  grid-template-columns: max-content minmax(0, 1fr) max-content minmax(220px, 320px);
   align-items: center;
   gap: 22px;
   min-height: 64px;
@@ -119,6 +121,23 @@ button:disabled {
 
 .top-search {
   width: 100%;
+}
+
+.top-actions,
+.drawer-actions,
+.pagination-row,
+.home-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  max-width: 100%;
+}
+
+.compact-button {
+  min-height: 34px;
+  padding: 7px 10px;
+  font-size: 13px;
 }
 
 .field,
@@ -225,6 +244,53 @@ button:disabled {
   border-color: transparent;
 }
 
+.drawer-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+  display: flex;
+  justify-content: flex-end;
+  background: rgba(20, 32, 27, 0.25);
+}
+
+.candidate-drawer {
+  width: min(420px, 100vw);
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px;
+  overflow: auto;
+  background: var(--surface);
+  border-left: 1px solid var(--line);
+  box-shadow: -18px 0 36px rgba(20, 32, 27, 0.16);
+}
+
+.compact-head {
+  margin-bottom: 0;
+  align-items: flex-start;
+}
+
+.drawer-list {
+  display: grid;
+  gap: 10px;
+}
+
+.drawer-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--surface-muted);
+}
+
+.drawer-actions {
+  margin-top: auto;
+}
+
 .market-panel,
 .card,
 .step-panel,
@@ -284,9 +350,50 @@ button:disabled {
 }
 
 .main {
+  flex: 1;
   width: min(1500px, 100%);
   margin: 0 auto;
   padding: 26px clamp(16px, 3vw, 40px) 56px;
+}
+
+.segmented {
+  display: inline-flex;
+  max-width: 100%;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--surface);
+}
+
+.segmented button {
+  min-height: 38px;
+  border: 0;
+  border-left: 1px solid var(--line);
+  padding: 8px 12px;
+  color: var(--muted);
+  background: transparent;
+  font-weight: 750;
+  white-space: nowrap;
+}
+
+.segmented button:first-child {
+  border-left: 0;
+}
+
+.segmented button.active,
+.segmented button[aria-selected="true"] {
+  color: var(--brand-dark);
+  background: var(--surface-strong);
+}
+
+.page-size {
+  width: auto;
+  min-width: 118px;
+}
+
+.pagination-row {
+  justify-content: center;
+  margin-top: 18px;
 }
 
 .hero + .main {
@@ -512,6 +619,22 @@ tbody tr:hover {
   color: var(--brand-dark);
   background: var(--surface-strong);
   box-shadow: inset 0 -3px 0 var(--brand);
+}
+
+.step-tab small {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.step-tab.done small {
+  color: var(--good);
+}
+
+.step-tab.has-error small {
+  color: var(--warn);
 }
 
 .step-panel {
@@ -748,6 +871,34 @@ tbody tr:hover {
   text-align: center;
 }
 
+.empty-state .button {
+  margin-top: 14px;
+}
+
+.auth-layout {
+  display: grid;
+  justify-items: center;
+}
+
+.auth-card {
+  display: grid;
+  gap: 14px;
+  width: min(460px, 100%);
+}
+
+.account-tabs {
+  margin-bottom: 16px;
+}
+
+.account-panel {
+  margin-top: 16px;
+}
+
+.history-card {
+  display: grid;
+  gap: 12px;
+}
+
 .footer-note {
   width: min(1500px, 100%);
   margin: 0 auto;
@@ -770,6 +921,10 @@ tbody tr:hover {
     grid-column: 1 / -1;
   }
 
+  .top-actions {
+    justify-content: flex-end;
+  }
+
   .grid.four,
   .summary-strip {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -789,9 +944,9 @@ tbody tr:hover {
 
   .nav {
     order: 3;
-    width: calc(100% + 32px);
-    margin: 0 -16px -8px;
-    padding: 0 16px 8px;
+    width: 100%;
+    margin: 0 0 -8px;
+    padding: 0 0 8px;
     overflow-x: auto;
     scrollbar-width: none;
   }
@@ -802,6 +957,21 @@ tbody tr:hover {
 
   .top-search {
     order: 2;
+  }
+
+  .top-actions {
+    order: 2;
+    width: 100%;
+  }
+
+  .home-tools,
+  .home-tools .segmented {
+    width: 100%;
+    overflow-x: auto;
+  }
+
+  .top-search {
+    order: 4;
   }
 
   .hero,

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
-type View = "home" | "explore" | "detail" | "builder" | "results" | "about";
+type View = "home" | "explore" | "detail" | "builder" | "results" | "about" | "login" | "register" | "account";
 type RiskPreference = "conservative" | "balanced" | "aggressive";
 type AllocationMethod = "equal" | "score";
 type FactorKey = "beta" | "smb" | "rmw" | "cma" | "hmlo" | "momentum" | "volatility";
@@ -108,6 +108,28 @@ type RecommendationResult = {
     riskPreference: RiskPreference;
   };
 };
+
+type AppUser = {
+  id: string;
+  email: string;
+  displayName: string;
+  createdAt: string;
+};
+
+type PortfolioRun = {
+  id: string;
+  portfolioType: string;
+  conditions: Partial<PortfolioSettings>;
+  factorWeights: Record<FactorKey, number>;
+  allocationSettings: Partial<PortfolioSettings>;
+  candidateOnly: boolean;
+  candidateTickers: string[];
+  result: RecommendationResult;
+  createdAt: string;
+};
+
+type HomeCategoryKey = "popular" | "overall" | "momentum" | "stable";
+type AccountTab = "profile" | "history" | "candidates";
 
 const factorMeta: Record<FactorKey, { label: string; shortLabel: string; help: string }> = {
   beta: {
@@ -642,6 +664,49 @@ function validateFactorWeights(weights: Record<FactorKey, number>) {
   return errors;
 }
 
+function validateStepOne(settings: PortfolioSettings, candidateCount: number) {
+  const errors: string[] = [];
+  if (!Number.isFinite(settings.totalAmount) || settings.totalAmount <= 0) errors.push("投資總金額必須大於 0。");
+  if (!Number.isInteger(settings.stockCount) || settings.stockCount < 1 || settings.stockCount > 10) {
+    errors.push("預計持有股票數量必須是 1 到 10 之間的整數。");
+  }
+  if (!Number.isInteger(settings.minOverallStar) || settings.minOverallStar < 1 || settings.minOverallStar > 5) {
+    errors.push("最低綜合星等必須介於 1 到 5 星。");
+  }
+  if (!Number.isFinite(settings.industryCap) || settings.industryCap <= 0 || settings.industryCap > 100) {
+    errors.push("單一產業配置上限必須介於 1% 到 100%。");
+  }
+  if (settings.candidateOnly && candidateCount === 0) errors.push("若要僅使用候選股票，請先加入至少一檔候選股票。");
+  return errors;
+}
+
+function validateStepThree(settings: PortfolioSettings) {
+  const errors: string[] = [];
+  if (!Number.isFinite(settings.maxSingleWeight) || settings.maxSingleWeight <= 0 || settings.maxSingleWeight > 100) {
+    errors.push("單一股票最大配置比例必須介於 1% 到 100%。");
+  }
+  if (!Number.isFinite(settings.minSingleWeight) || settings.minSingleWeight < 0 || settings.minSingleWeight > 100) {
+    errors.push("最低配置比例必須介於 0% 到 100%。");
+  }
+  if (settings.minSingleWeight > settings.maxSingleWeight) errors.push("最低配置比例不可高於單一股票最大配置比例。");
+  if (!Number.isFinite(settings.reserveCashPercent) || settings.reserveCashPercent < 0 || settings.reserveCashPercent >= 100) {
+    errors.push("保留現金比例必須介於 0% 到 99%。");
+  }
+  return errors;
+}
+
+function weightGuidance(weights: Record<FactorKey, number>) {
+  const total = Number(weightSum(weights).toFixed(2));
+  const activeCount = Math.max(1, Object.values(weights).filter((value) => value > 0).length);
+  if (Math.abs(total - 100) <= 0.01) return "權重設定完成，可以進入下一步。";
+  if (total < 100) {
+    const gap = Number((100 - total).toFixed(2));
+    return `目前還差 ${gap}%。若平均分配到 ${activeCount} 個正在使用的因子，每個因子可以增加約 ${Number((gap / activeCount).toFixed(2))}%。`;
+  }
+  const gap = Number((total - 100).toFixed(2));
+  return `目前超出 ${gap}%。若平均調整 ${activeCount} 個非零因子，每個因子可以減少約 ${Number((gap / activeCount).toFixed(2))}%。`;
+}
+
 function factorScoresFor(stock: Stock, settings: PortfolioSettings) {
   return Object.fromEntries(
     factorKeys.map((factor) => [factor, adjustedPercentile(stock, factor, settings.riskPreference)]),
@@ -970,6 +1035,12 @@ function FactorCard({ stock, factor }: { stock: Stock; factor: FactorKey }) {
   );
 }
 
+const riskPreferenceLabel: Record<RiskPreference, string> = {
+  conservative: "保守",
+  balanced: "均衡",
+  aggressive: "積極",
+};
+
 export default function Home() {
   const [view, setView] = useState<View>("home");
   const [query, setQuery] = useState("");
@@ -986,14 +1057,38 @@ export default function Home() {
   const [settings, setSettings] = useState<PortfolioSettings>(initialSettings);
   const [storageReady, setStorageReady] = useState(false);
   const [activeInfoId, setActiveInfoId] = useState<string | null>(null);
+  const [user, setUser] = useState<AppUser | null>(null);
+  const [authMessage, setAuthMessage] = useState("");
+  const [loginForm, setLoginForm] = useState({ email: "", password: "" });
+  const [registerForm, setRegisterForm] = useState({ displayName: "", email: "", password: "", confirmPassword: "" });
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [homeCategory, setHomeCategory] = useState<HomeCategoryKey>("popular");
+  const [homePage, setHomePage] = useState(1);
+  const [homePageSize, setHomePageSize] = useState(8);
+  const [completedSteps, setCompletedSteps] = useState<number[]>([]);
+  const [wizardNotice, setWizardNotice] = useState("");
+  const [createdResult, setCreatedResult] = useState<RecommendationResult | null>(null);
+  const [resultStale, setResultStale] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
+  const [accountTab, setAccountTab] = useState<AccountTab>("profile");
+  const [historyItems, setHistoryItems] = useState<PortfolioRun[]>([]);
+  const [historyPage, setHistoryPage] = useState(1);
+  const [historyTotalPages, setHistoryTotalPages] = useState(1);
 
   const selectedStock = stocks.find((stock) => stock.stock_id === selectedId) || stocks[0];
   const industries = ["全部", ...Array.from(new Set(stocks.map((stock) => stock.industry)))];
   const portfolioResult = useMemo(() => buildRecommendations(settings, candidateIds), [settings, candidateIds]);
-  const recommendations = portfolioResult.recommendations;
+  const activeResult = createdResult;
+  const recommendations = activeResult?.recommendations ?? [];
   const candidateStocks = useMemo(() => stocks.filter((stock) => candidateIds.includes(stock.stock_id)), [candidateIds]);
   const weightErrors = validateFactorWeights(settings.factorWeights);
-  const canGenerate = portfolioResult.validationErrors.length === 0;
+  const stepErrors = {
+    1: validateStepOne(settings, candidateIds.length),
+    2: validateFactorWeights(settings.factorWeights),
+    3: validateStepThree(settings),
+    4: portfolioResult.validationErrors,
+  } as Record<number, string[]>;
+  const canGenerate = Object.values(stepErrors).every((errors) => errors.length === 0);
   const filteredStocks = useMemo(() => {
     return stocks
       .filter((stock) => `${stock.stock_name}${stock.stock_id}`.toLowerCase().includes(query.toLowerCase()))
@@ -1011,12 +1106,55 @@ export default function Home() {
         return b.overall_star - a.overall_star;
       });
   }, [query, industry, minStar, risk, excludeFatal, sortBy, settings]);
+  const homeCategories: Record<HomeCategoryKey, { label: string; help: string; items: Stock[] }> = useMemo(
+    () => ({
+      popular: {
+        label: "熱門關注",
+        help: "市場討論度與關注度較高的股票，適合作為認識市場的起點。",
+        items: [...stocks].sort((a, b) => b.popularity - a.popularity),
+      },
+      overall: {
+        label: "整體表現較佳",
+        help: "綜合星等較高的股票，代表目前樣本中多個條件相對均衡。",
+        items: [...stocks].sort((a, b) => b.overall_star - a.overall_star),
+      },
+      momentum: {
+        label: "近期走勢強勢",
+        help: "近期價格走勢相對強的股票，但近期上漲不保證未來持續上漲。",
+        items: [...stocks].sort((a, b) => b.momentum_percentile - a.momentum_percentile),
+      },
+      stable: {
+        label: "價格相對穩定",
+        help: "過去價格波動較小的股票，通常較適合偏穩健的觀察方向。",
+        items: [...stocks].sort((a, b) => a.volatility_percentile - b.volatility_percentile),
+      },
+    }),
+    [],
+  );
+  const activeHome = homeCategories[homeCategory];
+  const homeTotalPages = Math.max(1, Math.ceil(activeHome.items.length / homePageSize));
+  const homeItems = activeHome.items.slice((homePage - 1) * homePageSize, homePage * homePageSize);
+  const resultTotalAmount = activeResult?.recommendations.reduce((sum, item) => sum + item.actual_amount + item.remaining_cash, 0) ?? settings.totalAmount;
+  const resultInvested = recommendations.reduce((sum, item) => sum + item.actual_amount, 0);
+  const resultScoredCount = activeResult
+    ? activeResult.poolMode === "僅使用候選股票"
+      ? activeResult.eligibleCandidateCount
+      : stocks.filter((stock) => !exclusionReason(stock, settings)).length
+    : 0;
 
   useEffect(() => {
     queueMicrotask(() => {
-      setCandidateIds(loadStoredCandidateIds());
+      const storedIds = loadStoredCandidateIds();
+      setCandidateIds(storedIds);
       setSettings(loadStoredSettings());
       setStorageReady(true);
+      fetch("/api/auth/me")
+        .then((response) => response.json())
+        .then(async (data: { user: AppUser | null }) => {
+          setUser(data.user);
+          if (data.user) await mergeServerCandidates(storedIds);
+        })
+        .catch(() => setUser(null));
     });
   }, []);
 
@@ -1051,12 +1189,49 @@ export default function Home() {
     };
   }, [activeInfoId]);
 
+  useEffect(() => {
+    if (!user || accountTab !== "history") return;
+    void fetch(`/api/portfolio-runs?page=${historyPage}&pageSize=6`)
+      .then((response) => {
+        if (!response.ok) return null;
+        return response.json() as Promise<{ items: PortfolioRun[]; totalPages: number }>;
+      })
+      .then((data) => {
+        if (!data) return;
+        setHistoryItems(data.items);
+        setHistoryTotalPages(data.totalPages);
+      });
+  }, [user, accountTab, historyPage]);
+
+  async function mergeServerCandidates(localIds: string[]) {
+    try {
+      await fetch("/api/candidates", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tickers: localIds }),
+      });
+      const response = await fetch("/api/candidates");
+      if (!response.ok) return;
+      const data = (await response.json()) as { candidates: { ticker: string }[] };
+      setCandidateIds(data.candidates.map((item) => item.ticker));
+    } catch {
+      // 訪客或本地預覽沒有 D1 時，保留瀏覽器候選清單。
+    }
+  }
+
   const toggleCandidate = (id: string) => {
-    setCandidateIds((current) => (current.includes(id) ? current.filter((item) => item !== id) : [...current, id]));
+    setCandidateIds((current) => {
+      const exists = current.includes(id);
+      const next = exists ? current.filter((item) => item !== id) : [...current, id];
+      void syncCandidateChange(id, !exists);
+      return next;
+    });
+    if (createdResult) setResultStale(true);
   };
 
   const updateSetting = <K extends keyof PortfolioSettings>(key: K, value: PortfolioSettings[K]) => {
     setSettings((current) => ({ ...current, [key]: value }));
+    if (createdResult) setResultStale(true);
   };
 
   const updateWeight = (factor: FactorKey, value: number) => {
@@ -1065,6 +1240,184 @@ export default function Home() {
       ...current,
       factorWeights: { ...current.factorWeights, [factor]: bounded },
     }));
+    if (createdResult) setResultStale(true);
+  };
+
+  const syncCandidateChange = async (id: string, shouldAdd: boolean) => {
+    if (!user) return;
+    try {
+      if (shouldAdd) {
+        await fetch("/api/candidates", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ tickers: [id] }),
+        });
+      } else {
+        await fetch(`/api/candidates?ticker=${encodeURIComponent(id)}`, { method: "DELETE" });
+      }
+    } catch {
+      setAuthMessage("候選清單已先保存在此裝置，稍後登入後會再同步。");
+    }
+  };
+
+  const clearCandidates = async () => {
+    if (!window.confirm("確定要清空所有候選股票嗎？")) return;
+    setCandidateIds([]);
+    if (createdResult) setResultStale(true);
+    if (user) await fetch("/api/candidates", { method: "DELETE" });
+  };
+
+  const signIn = async () => {
+    setAuthMessage("");
+    const response = await fetch("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(loginForm),
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      setAuthMessage(data.error ?? "登入失敗。");
+      return;
+    }
+    setUser(data.user);
+    await mergeServerCandidates(candidateIds);
+    navigate("account");
+  };
+
+  const register = async () => {
+    setAuthMessage("");
+    const response = await fetch("/api/auth/register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(registerForm),
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      setAuthMessage(data.error ?? "註冊失敗。");
+      return;
+    }
+    setUser(data.user);
+    await mergeServerCandidates(candidateIds);
+    navigate("account");
+  };
+
+  const signOut = async () => {
+    await fetch("/api/auth/logout", { method: "POST" });
+    setUser(null);
+    setHistoryItems([]);
+    navigate("home");
+  };
+
+  async function loadHistory(page = 1) {
+    if (!user) return;
+    const response = await fetch(`/api/portfolio-runs?page=${page}&pageSize=6`);
+    if (!response.ok) return;
+    const data = (await response.json()) as { items: PortfolioRun[]; totalPages: number };
+    setHistoryItems(data.items);
+    setHistoryTotalPages(data.totalPages);
+  }
+
+  const saveHistory = async (result: RecommendationResult) => {
+    if (!user) return;
+    await fetch("/api/portfolio-runs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        portfolioType: settings.portfolioType,
+        conditions: {
+          totalAmount: settings.totalAmount,
+          stockCount: settings.stockCount,
+          minOverallStar: settings.minOverallStar,
+          riskPreference: settings.riskPreference,
+          excludeFatal: settings.excludeFatal,
+          limitIndustry: settings.limitIndustry,
+          industryCap: settings.industryCap,
+        },
+        factorWeights: settings.factorWeights,
+        allocationSettings: {
+          allocationMethod: settings.allocationMethod,
+          maxSingleWeight: settings.maxSingleWeight,
+          minSingleWeight: settings.minSingleWeight,
+          reserveCashPercent: settings.reserveCashPercent,
+          oddLots: settings.oddLots,
+        },
+        candidateOnly: settings.candidateOnly,
+        candidateTickers: candidateIds,
+        result,
+      }),
+    });
+  };
+
+  const createPortfolio = async () => {
+    if (!canGenerate || isCreating) return;
+    setIsCreating(true);
+    try {
+      const result = buildRecommendations(settings, candidateIds);
+      setCreatedResult(result);
+      setResultStale(false);
+      setCompletedSteps([1, 2, 3, 4]);
+      await saveHistory(result);
+      navigate("results");
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
+  const applyRunSettings = (run: PortfolioRun) => {
+    setSettings((current) => ({
+      ...current,
+      ...run.conditions,
+      ...run.allocationSettings,
+      portfolioType: run.portfolioType as PortfolioType,
+      factorWeights: run.factorWeights,
+      candidateOnly: run.candidateOnly,
+    }));
+    setCandidateIds(run.candidateTickers);
+    setCreatedResult(null);
+    setResultStale(false);
+    setStep(1);
+    setCompletedSteps([]);
+    setWizardNotice("已套用歷史條件。請重新確認並建立投資組合。");
+    navigate("builder");
+  };
+
+  const deleteRun = async (id: string) => {
+    if (!window.confirm("確定要刪除這筆投資組合紀錄嗎？")) return;
+    await fetch(`/api/portfolio-runs/${id}`, { method: "DELETE" });
+    await loadHistory(historyPage);
+  };
+
+  const firstInvalidStep = () => {
+    for (const item of [1, 2, 3, 4]) {
+      if (stepErrors[item].length) return item;
+    }
+    return 0;
+  };
+
+  const goToStep = (nextStep: number) => {
+    if (nextStep <= step || completedSteps.includes(nextStep - 1)) {
+      setStep(nextStep);
+      setWizardNotice("");
+      return;
+    }
+    const blockedStep = firstInvalidStep();
+    if (blockedStep && blockedStep < nextStep) {
+      setStep(blockedStep);
+      setWizardNotice(`請先完成第 ${blockedStep} 步：${stepErrors[blockedStep][0]}`);
+      return;
+    }
+    setStep(nextStep);
+  };
+
+  const nextStep = () => {
+    const errors = stepErrors[step];
+    if (errors.length) {
+      setWizardNotice(errors[0]);
+      return;
+    }
+    setCompletedSteps((current) => Array.from(new Set([...current, step])));
+    setWizardNotice("");
+    setStep((current) => Math.min(4, current + 1));
   };
 
   const navigate = (next: View) => {
@@ -1092,6 +1445,30 @@ export default function Home() {
             </button>
           ))}
         </nav>
+        <div className="top-actions">
+          <button className="button secondary compact-button" type="button" onClick={() => setDrawerOpen(true)}>
+            候選清單（{candidateIds.length}）
+          </button>
+          {user ? (
+            <>
+              <button className={view === "account" ? "button compact-button" : "button secondary compact-button"} type="button" onClick={() => navigate("account")}>
+                我的帳戶
+              </button>
+              <button className="button ghost compact-button" type="button" onClick={signOut}>
+                登出
+              </button>
+            </>
+          ) : (
+            <>
+              <button className={view === "login" ? "button compact-button" : "button secondary compact-button"} type="button" onClick={() => navigate("login")}>
+                登入
+              </button>
+              <button className={view === "register" ? "button compact-button" : "button ghost compact-button"} type="button" onClick={() => navigate("register")}>
+                註冊
+              </button>
+            </>
+          )}
+        </div>
         <input
           className="field top-search"
           aria-label="股票名稱或代碼搜尋"
@@ -1103,6 +1480,61 @@ export default function Home() {
           }}
         />
       </header>
+      {drawerOpen && (
+        <div className="drawer-layer" role="presentation" onPointerDown={() => setDrawerOpen(false)}>
+          <aside className="candidate-drawer" role="dialog" aria-label="候選股票清單" onPointerDown={(event) => event.stopPropagation()}>
+            <div className="section-head compact-head">
+              <div>
+                <h2>候選清單</h2>
+                <p>目前候選股票：{candidateIds.length} 檔</p>
+              </div>
+              <button className="icon-btn" type="button" aria-label="關閉候選清單" onClick={() => setDrawerOpen(false)}>
+                ×
+              </button>
+            </div>
+            {candidateStocks.length ? (
+              <div className="drawer-list">
+                {candidateStocks.map((stock) => (
+                  <div className="drawer-item" key={stock.stock_id}>
+                    <div>
+                      <strong>{stock.stock_name}</strong>
+                      <p className="subtle">
+                        {stock.stock_id} · {stock.industry} · {starText(stock.overall_star)}
+                      </p>
+                    </div>
+                    <button className="button ghost compact-button" type="button" onClick={() => toggleCandidate(stock.stock_id)}>
+                      移除
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="empty-state">
+                <strong>尚未加入候選股票</strong>
+                <p className="subtle">可以先到股票探索頁把想觀察的標的加入清單。</p>
+              </div>
+            )}
+            <div className="drawer-actions">
+              <button
+                className="button"
+                type="button"
+                onClick={() => {
+                  setDrawerOpen(false);
+                  navigate("builder");
+                }}
+              >
+                前往建立投資組合
+              </button>
+              <button className="button secondary" type="button" onClick={() => navigate("explore")}>
+                前往選股頁面
+              </button>
+              <button className="button ghost" type="button" disabled={!candidateIds.length} onClick={clearCandidates}>
+                清空候選
+              </button>
+            </div>
+          </aside>
+        </div>
+      )}
 
       {view === "home" && (
         <>
@@ -1151,35 +1583,78 @@ export default function Home() {
             </aside>
           </section>
           <main className="main">
-            {[
-              ["熱門關注", [...stocks].sort((a, b) => b.popularity - a.popularity).slice(0, 4)],
-              ["綜合評分較高", [...stocks].sort((a, b) => b.overall_star - a.overall_star).slice(0, 4)],
-              ["強勢動能", [...stocks].sort((a, b) => b.momentum_percentile - a.momentum_percentile).slice(0, 4)],
-              ["穩健低波動", [...stocks].sort((a, b) => a.volatility_percentile - b.volatility_percentile).slice(0, 4)],
-            ].map(([title, list]) => (
-              <section key={title as string} style={{ marginBottom: 32 }}>
-                <div className="section-head">
-                  <div>
-                    <h2>{title as string}</h2>
-                    <p>首頁僅呈現主要因子特色與風險提示，完整曝險請進入個股分析。</p>
+            <section>
+              <div className="section-head">
+                <div>
+                  <h2>{activeHome.label}</h2>
+                  <p>{activeHome.help}</p>
+                </div>
+                <div className="home-tools">
+                  <div className="segmented" role="tablist" aria-label="首頁股票分類">
+                    {(Object.keys(homeCategories) as HomeCategoryKey[]).map((key) => (
+                      <button
+                        key={key}
+                        type="button"
+                        role="tab"
+                        aria-selected={homeCategory === key}
+                        className={homeCategory === key ? "active" : ""}
+                        onClick={() => {
+                          setHomeCategory(key);
+                          setHomePage(1);
+                        }}
+                      >
+                        {homeCategories[key].label}
+                      </button>
+                    ))}
                   </div>
+                  <select
+                    className="select page-size"
+                    aria-label="每頁顯示股票數"
+                    value={homePageSize}
+                    onChange={(event) => {
+                      setHomePageSize(Number(event.target.value));
+                      setHomePage(1);
+                    }}
+                  >
+                    {[4, 8, 12].map((size) => (
+                      <option key={size} value={size}>
+                        每頁 {size} 檔
+                      </option>
+                    ))}
+                  </select>
                 </div>
-                <div className="grid four">
-                  {(list as Stock[]).map((stock) => (
-                    <StockCard
-                      key={`${title}-${stock.stock_id}`}
-                      stock={stock}
-                      isCandidate={candidateIds.includes(stock.stock_id)}
-                      onCandidate={() => toggleCandidate(stock.stock_id)}
-                      onDetail={() => {
-                        setSelectedId(stock.stock_id);
-                        navigate("detail");
-                      }}
-                    />
-                  ))}
-                </div>
-              </section>
-            ))}
+              </div>
+              <div className="grid four">
+                {homeItems.map((stock) => (
+                  <StockCard
+                    key={`${homeCategory}-${stock.stock_id}`}
+                    stock={stock}
+                    isCandidate={candidateIds.includes(stock.stock_id)}
+                    onCandidate={() => toggleCandidate(stock.stock_id)}
+                    onDetail={() => {
+                      setSelectedId(stock.stock_id);
+                      navigate("detail");
+                    }}
+                  />
+                ))}
+              </div>
+              <div className="pagination-row">
+                <button className="button secondary" type="button" disabled={homePage === 1} onClick={() => setHomePage((current) => Math.max(1, current - 1))}>
+                  上一頁
+                </button>
+                <span className="subtle">
+                  第 {homePage} / {homeTotalPages} 頁
+                </span>
+                <button
+                  className="button secondary"
+                  type="button"
+                  disabled={homePage === homeTotalPages}
+                  onClick={() => setHomePage((current) => Math.min(homeTotalPages, current + 1))}
+                >
+                  下一頁
+                </button>
+              </div>
+            </section>
           </main>
         </>
       )}
@@ -1250,9 +1725,9 @@ export default function Home() {
                     <th>產業</th>
                     <th>綜合星等</th>
                     <th>客製化分數</th>
-                    <th>RMW</th>
-                    <th>Momentum</th>
-                    <th>Volatility</th>
+                    <th>獲利因子</th>
+                    <th>動能因子</th>
+                    <th>低波動因子</th>
                     <th>風險</th>
                     <th>操作</th>
                   </tr>
@@ -1354,7 +1829,7 @@ export default function Home() {
                 <div className="grid two">
                   <FactorCard stock={selectedStock} factor="volatility" />
                   <article className="card">
-                    <strong>Fatal combination</strong>
+                    <strong>致命組合規則</strong>
                     <p className="subtle">規則：SMB &gt; 0、RMW &lt; 0、CMA &lt; 0 同時成立。</p>
                     <span className={selectedStock.fatal_flag ? "tag risk" : "tag"}>
                       {selectedStock.fatal_flag ? "已觸發" : "未觸發"}
@@ -1407,12 +1882,27 @@ export default function Home() {
           </div>
           <div className="stepper">
             {["投資條件", "因子偏好", "資金配置", "確認設定"].map((label, index) => (
-              <button key={label} className={step === index + 1 ? "step-tab active" : "step-tab"} onClick={() => setStep(index + 1)}>
+              <button
+                key={label}
+                className={[
+                  "step-tab",
+                  step === index + 1 ? "active" : "",
+                  completedSteps.includes(index + 1) ? "done" : "",
+                  stepErrors[index + 1].length ? "has-error" : "",
+                ]
+                  .filter(Boolean)
+                  .join(" ")}
+                type="button"
+                onClick={() => goToStep(index + 1)}
+                aria-current={step === index + 1 ? "step" : undefined}
+              >
                 {index + 1}. {label}
+                <small>{completedSteps.includes(index + 1) ? "已完成" : stepErrors[index + 1].length ? "需確認" : "可填寫"}</small>
               </button>
             ))}
           </div>
           <section className="step-panel">
+            {wizardNotice && <p className="warning-box">{wizardNotice}</p>}
             {step === 1 && (
               <div className="grid three">
                 <label className="label">
@@ -1526,7 +2016,7 @@ export default function Home() {
                     </div>
                   )}
                   {settings.candidateOnly && (
-                    <p className={candidateIds.length ? "notice compact" : "warning-box"}>
+                  <p className={candidateIds.length ? "notice compact" : "warning-box"}>
                       {candidateIds.length
                         ? "候選股票限定模式已開啟，最終結果只會包含候選清單中的股票。"
                         : "請先加入至少一檔候選股票。"}
@@ -1536,6 +2026,11 @@ export default function Home() {
                     前往選股頁面
                   </button>
                 </div>
+                {stepErrors[1].map((error) => (
+                  <p className="warning-box" key={error}>
+                    {error}
+                  </p>
+                ))}
               </div>
             )}
             {step === 2 && (
@@ -1588,6 +2083,7 @@ export default function Home() {
                   目前權重總和：{weightSum(settings.factorWeights)}%
                   {!isValidWeightTotal(settings.factorWeights) && "。請將權重總和調整為 100%。"}
                 </p>
+                <p className="notice compact">{weightGuidance(settings.factorWeights)}</p>
                 {factorKeys.map((factor) => (
                   <div className="slider-row" key={factor}>
                     <span className="factor-name">
@@ -1668,6 +2164,11 @@ export default function Home() {
                     onChange={(event) => updateSetting("reserveCashPercent", Number(event.target.value))}
                   />
                 </label>
+                {stepErrors[3].map((error) => (
+                  <p className="warning-box" key={error}>
+                    {error}
+                  </p>
+                ))}
               </div>
             )}
             {step === 4 && (
@@ -1677,7 +2178,7 @@ export default function Home() {
                   <p>投資金額：{formatCurrency(settings.totalAmount)}</p>
                   <p>投資組合類型：{settings.portfolioType}</p>
                   <p>股票數量：{settings.stockCount}</p>
-                  <p>風險偏好：{settings.riskPreference === "conservative" ? "保守" : settings.riskPreference === "balanced" ? "均衡" : "積極"}</p>
+                  <p>風險偏好：{riskPreferenceLabel[settings.riskPreference]}</p>
                   <p>配置方式：{settings.allocationMethod === "equal" ? "等額配置" : "依評分配置"}</p>
                   <p>排除致命組合：{settings.excludeFatal ? "是" : "否"}</p>
                   <p>股票池模式：{settings.candidateOnly ? `僅使用候選股票（${candidateIds.length} 檔）` : "完整股票池"}</p>
@@ -1692,8 +2193,9 @@ export default function Home() {
                       {error}
                     </p>
                   ))}
-                  <button className="button" disabled={!canGenerate} onClick={() => navigate("results")}>
-                    產生智能投資組合
+                  {!user && <p className="notice compact">目前以訪客模式建立。登入後建立的投資組合會自動保存至歷史紀錄。</p>}
+                  <button className="button" disabled={!canGenerate || isCreating} onClick={createPortfolio}>
+                    {isCreating ? "建立中..." : "確認並建立投資組合"}
                   </button>
                 </div>
               </div>
@@ -1702,7 +2204,7 @@ export default function Home() {
               <button className="button secondary" disabled={step === 1} onClick={() => setStep((current) => Math.max(1, current - 1))}>
                 上一步
               </button>
-              <button className="button" disabled={step === 4} onClick={() => setStep((current) => Math.min(4, current + 1))}>
+              <button className="button" disabled={step === 4} onClick={nextStep}>
                 下一步
               </button>
             </div>
@@ -1721,141 +2223,403 @@ export default function Home() {
               調整設定
             </button>
           </div>
-          {portfolioResult.validationErrors.map((error) => (
-            <p className="warning-box" key={error}>
-              {error}
-            </p>
-          ))}
-          {!portfolioResult.validationErrors.length && recommendations.length < settings.stockCount && (
-            <p className="warning-box">
-              符合條件股票不足：目前僅 {recommendations.length} 支。可能原因包含最低星等、排除致命組合、保守風險偏好或產業上限過嚴。建議放寬最低星等、提高產業上限或取消排除致命組合。
-            </p>
-          )}
-          <section className="summary-strip">
-            <div className="kpi">
-              股票池模式<strong>{portfolioResult.poolMode}</strong>
-            </div>
-            <div className="kpi">
-              投資總金額<strong>{formatCurrency(settings.totalAmount)}</strong>
-            </div>
-            <div className="kpi">
-              實際配置<strong>{formatCurrency(recommendations.reduce((sum, item) => sum + item.actual_amount, 0))}</strong>
-            </div>
-            <div className="kpi">
-              剩餘現金<strong>{formatCurrency(settings.totalAmount - recommendations.reduce((sum, item) => sum + item.actual_amount, 0))}</strong>
-            </div>
-            <div className="kpi">
-              股票數量<strong>{recommendations.length}</strong>
-            </div>
-            <div className="kpi">
-              參與評分<strong>{settings.candidateOnly ? portfolioResult.eligibleCandidateCount : stocks.filter((stock) => !exclusionReason(stock, settings)).length}</strong>
-            </div>
-            <div className="kpi">
-              平均星等<strong>{(recommendations.reduce((sum, item) => sum + item.overall_star, 0) / Math.max(1, recommendations.length)).toFixed(1)}</strong>
-            </div>
-            <div className="kpi">
-              風險等級<strong>{recommendations.some((item) => item.risk_level === "高") ? "高" : "中"}</strong>
-            </div>
-          </section>
-          <section className="grid two result-meta">
-            <div className="card">
-              <h2 className="panel-title">本次設定</h2>
-              <p>投資組合類型：{settings.portfolioType}</p>
-              <p>股票池：{portfolioResult.poolMode}</p>
-              {settings.candidateOnly && (
-                <>
-                  <p>本次候選股票總數：{portfolioResult.candidateTotal}</p>
-                  <p>成功取得資料並參與評分：{portfolioResult.eligibleCandidateCount}</p>
-                  <p>最終入選股票數量：{recommendations.length}</p>
-                </>
-              )}
-            </div>
-            <div className="card">
-              <h2 className="panel-title">本次因子權重</h2>
-              <div className="factor-weight-list">
-                {factorKeys.map((factor) => (
-                  <span key={factor}>
-                    {factorMeta[factor].label}：{settings.factorWeights[factor]}%
-                  </span>
-                ))}
-              </div>
-            </div>
-          </section>
-          {settings.candidateOnly && portfolioResult.excludedCandidates.length > 0 && (
-            <section className="card result-meta">
-              <h2 className="panel-title">候選股票排除原因</h2>
-              <div className="grid">
-                {portfolioResult.excludedCandidates.map((item) => (
-                  <p className="warning-box" key={item.stock_id}>
-                    {item.stock_id} {item.stock_name}：{item.reason}
-                  </p>
-                ))}
-              </div>
+          {!activeResult ? (
+            <section className="card empty-state">
+              <h2 className="panel-title">尚未建立投資組合</h2>
+              <p className="subtle">請先到建立投資組合頁完成四個步驟，並按下「確認並建立投資組合」。</p>
+              <button className="button" type="button" onClick={() => navigate("builder")}>
+                前往建立
+              </button>
             </section>
+          ) : (
+            <>
+              {resultStale && <p className="warning-box">你已修改設定或候選清單。此頁仍顯示上一次確認建立的結果，若要更新請回到建立頁重新建立。</p>}
+              {activeResult.validationErrors.map((error) => (
+                <p className="warning-box" key={error}>
+                  {error}
+                </p>
+              ))}
+              {!activeResult.validationErrors.length && recommendations.length < settings.stockCount && (
+                <p className="warning-box">
+                  符合條件股票不足：目前僅 {recommendations.length} 支。可能原因包含最低星等、排除致命組合、保守風險偏好或產業上限過嚴。
+                </p>
+              )}
+              <section className="summary-strip">
+                <div className="kpi">
+                  股票池模式<strong>{activeResult.poolMode}</strong>
+                </div>
+                <div className="kpi">
+                  投資總金額<strong>{formatCurrency(resultTotalAmount)}</strong>
+                </div>
+                <div className="kpi">
+                  實際配置<strong>{formatCurrency(resultInvested)}</strong>
+                </div>
+                <div className="kpi">
+                  剩餘現金<strong>{formatCurrency(Math.max(0, resultTotalAmount - resultInvested))}</strong>
+                </div>
+                <div className="kpi">
+                  入選股票<strong>{recommendations.length}</strong>
+                </div>
+                <div className="kpi">
+                  參與評分<strong>{resultScoredCount}</strong>
+                </div>
+                <div className="kpi">
+                  平均星等<strong>{(recommendations.reduce((sum, item) => sum + item.overall_star, 0) / Math.max(1, recommendations.length)).toFixed(1)}</strong>
+                </div>
+                <div className="kpi">
+                  風險等級<strong>{recommendations.some((item) => item.risk_level === "高") ? "高" : "中"}</strong>
+                </div>
+              </section>
+              <section className="grid two result-meta">
+                <div className="card">
+                  <h2 className="panel-title">本次設定</h2>
+                  <p>投資組合類型：{activeResult.requestPayload.portfolioType === "custom" ? "自訂型" : activeResult.requestPayload.portfolioType}</p>
+                  <p>股票池：{activeResult.poolMode}</p>
+                  <p>是否僅使用候選股票：{activeResult.requestPayload.candidateOnly ? "是" : "否"}</p>
+                  {activeResult.poolMode === "僅使用候選股票" && (
+                    <>
+                      <p>本次候選股票總數：{activeResult.candidateTotal}</p>
+                      <p>成功取得資料並參與評分：{activeResult.eligibleCandidateCount}</p>
+                      <p>最終入選股票數量：{recommendations.length}</p>
+                    </>
+                  )}
+                  {!user && <p className="notice compact">登入後建立的投資組合會自動保存歷史紀錄。</p>}
+                </div>
+                <div className="card">
+                  <h2 className="panel-title">本次因子權重</h2>
+                  <div className="factor-weight-list">
+                    {factorKeys.map((factor) => (
+                      <span key={factor}>
+                        {factorMeta[factor].label}：{Number((activeResult.requestPayload.factorWeights[factor] * 100).toFixed(2))}%
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </section>
+              {activeResult.poolMode === "僅使用候選股票" && activeResult.excludedCandidates.length > 0 && (
+                <section className="card result-meta">
+                  <h2 className="panel-title">候選股票排除原因</h2>
+                  <div className="grid">
+                    {activeResult.excludedCandidates.map((item) => (
+                      <p className="warning-box" key={item.stock_id}>
+                        {item.stock_id} {item.stock_name}：{item.reason}
+                      </p>
+                    ))}
+                  </div>
+                </section>
+              )}
+              <section style={{ marginTop: 22 }} className="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>排名</th>
+                      <th>股票</th>
+                      <th>綜合分數</th>
+                      <th>星等</th>
+                      <th>各因子分數</th>
+                      <th>配置比例</th>
+                      <th>配置金額</th>
+                      <th>股數</th>
+                      <th>推薦原因</th>
+                      <th>主要風險</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {recommendations.map((item) => (
+                      <tr key={item.stock_id}>
+                        <td>{item.rank}</td>
+                        <td>
+                          <strong>{item.stock_name}</strong>
+                          <div className="subtle">
+                            {item.stock_id} · {item.industry}
+                          </div>
+                        </td>
+                        <td>{item.custom_score}</td>
+                        <td className="stars">{starText(item.overall_star)}</td>
+                        <td>
+                          <div className="factor-score-list">
+                            {factorKeys.map((factor) => (
+                              <span key={factor}>
+                                {factorMeta[factor].label} {item.factor_scores[factor]}
+                              </span>
+                            ))}
+                          </div>
+                        </td>
+                        <td>{item.allocation_weight}%</td>
+                        <td>{formatCurrency(item.actual_amount)}</td>
+                        <td>{item.purchasable_shares.toLocaleString("zh-TW")}</td>
+                        <td>{item.recommendation_reasons[0]}</td>
+                        <td>{item.risk_reasons[0]}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </section>
+              <section className="grid two" style={{ marginTop: 22 }}>
+                <div className="card">
+                  <h2 className="panel-title">AI 組合整體分析</h2>
+                  <p className="subtle">
+                    此組合主要偏向 {settings.allocationMethod === "score" ? "依客製化分數提高高排名股票權重" : "等額分散配置"}，
+                    較強因子集中在 {recommendations[0]?.recommendation_reasons[0] || "目前條件下沒有足夠樣本"}。主要風險來自
+                    {recommendations.find((item) => item.risk_level === "高")?.risk_reasons[0] || "模型估計期間、資料品質與市場狀態變化"}。
+                  </p>
+                </div>
+                <div className="card">
+                  <h2 className="panel-title">免責聲明</h2>
+                  <p className="subtle">
+                    本結果為量化模型之決策輔助，不代表未來報酬保證。因子曝險由歷史資料估計，可能受到市場狀態、資料品質與估計期間影響。本 MVP 尚未納入交易成本、稅費、流動性與滑價。
+                  </p>
+                </div>
+              </section>
+            </>
           )}
-          <section style={{ marginTop: 22 }} className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>排名</th>
-                  <th>股票</th>
-                  <th>分數</th>
-                  <th>星等</th>
-                  <th>各因子分數</th>
-                  <th>配置比例</th>
-                  <th>配置金額</th>
-                  <th>股數</th>
-                  <th>推薦原因</th>
-                  <th>主要風險</th>
-                </tr>
-              </thead>
-              <tbody>
-                {recommendations.map((item) => (
-                  <tr key={item.stock_id}>
-                    <td>{item.rank}</td>
-                    <td>
-                      <strong>{item.stock_name}</strong>
-                      <div className="subtle">
-                        {item.stock_id} · {item.industry}
-                      </div>
-                    </td>
-                    <td>{item.custom_score}</td>
-                    <td className="stars">{starText(item.overall_star)}</td>
-                    <td>
-                      <div className="factor-score-list">
-                        {factorKeys.map((factor) => (
-                          <span key={factor}>
-                            {factorMeta[factor].label} {item.factor_scores[factor]}
-                          </span>
-                        ))}
-                      </div>
-                    </td>
-                    <td>{item.allocation_weight}%</td>
-                    <td>{formatCurrency(item.actual_amount)}</td>
-                    <td>{item.purchasable_shares.toLocaleString("zh-TW")}</td>
-                    <td>{item.recommendation_reasons[0]}</td>
-                    <td>{item.risk_reasons[0]}</td>
-                  </tr>
+        </main>
+      )}
+
+      {view === "login" && (
+        <main className="main auth-layout">
+          <section className="card auth-card">
+            <h2 className="panel-title">登入帳號</h2>
+            <p className="subtle">登入後可同步候選股票並保存每次建立的投資組合紀錄。</p>
+            <label className="label">
+              電子信箱
+              <input
+                className="field"
+                type="email"
+                value={loginForm.email}
+                onChange={(event) => setLoginForm((current) => ({ ...current, email: event.target.value }))}
+              />
+            </label>
+            <label className="label">
+              密碼
+              <input
+                className="field"
+                type="password"
+                value={loginForm.password}
+                onChange={(event) => setLoginForm((current) => ({ ...current, password: event.target.value }))}
+              />
+            </label>
+            {authMessage && <p className="warning-box">{authMessage}</p>}
+            <button className="button" type="button" onClick={signIn}>
+              登入
+            </button>
+            <button className="button ghost" type="button" onClick={() => navigate("register")}>
+              還沒有帳號，前往註冊
+            </button>
+          </section>
+        </main>
+      )}
+
+      {view === "register" && (
+        <main className="main auth-layout">
+          <section className="card auth-card">
+            <h2 className="panel-title">建立帳號</h2>
+            <p className="subtle">註冊後，瀏覽器中的候選清單會合併到你的帳號。</p>
+            <label className="label">
+              顯示名稱
+              <input
+                className="field"
+                value={registerForm.displayName}
+                onChange={(event) => setRegisterForm((current) => ({ ...current, displayName: event.target.value }))}
+              />
+            </label>
+            <label className="label">
+              電子信箱
+              <input
+                className="field"
+                type="email"
+                value={registerForm.email}
+                onChange={(event) => setRegisterForm((current) => ({ ...current, email: event.target.value }))}
+              />
+            </label>
+            <label className="label">
+              密碼
+              <input
+                className="field"
+                type="password"
+                value={registerForm.password}
+                onChange={(event) => setRegisterForm((current) => ({ ...current, password: event.target.value }))}
+              />
+            </label>
+            <label className="label">
+              確認密碼
+              <input
+                className="field"
+                type="password"
+                value={registerForm.confirmPassword}
+                onChange={(event) => setRegisterForm((current) => ({ ...current, confirmPassword: event.target.value }))}
+              />
+            </label>
+            {authMessage && <p className="warning-box">{authMessage}</p>}
+            <button className="button" type="button" onClick={register}>
+              註冊並登入
+            </button>
+            <button className="button ghost" type="button" onClick={() => navigate("login")}>
+              已有帳號，前往登入
+            </button>
+          </section>
+        </main>
+      )}
+
+      {view === "account" && (
+        <main className="main">
+          {!user ? (
+            <section className="card empty-state">
+              <h2 className="panel-title">請先登入</h2>
+              <p className="subtle">登入後可以查看個人資料、投資組合歷史紀錄與候選清單。</p>
+              <button className="button" type="button" onClick={() => navigate("login")}>
+                前往登入
+              </button>
+            </section>
+          ) : (
+            <>
+              <div className="section-head">
+                <div>
+                  <h2>我的帳戶</h2>
+                  <p>{user.displayName}，這裡保存你的候選股票與投資組合紀錄。</p>
+                </div>
+                <button className="button secondary" type="button" onClick={signOut}>
+                  登出
+                </button>
+              </div>
+              <div className="segmented account-tabs" role="tablist" aria-label="帳戶分頁">
+                {[
+                  ["profile", "基本資料"],
+                  ["history", "投資組合歷史"],
+                  ["candidates", "候選清單"],
+                ].map(([id, label]) => (
+                  <button
+                    key={id}
+                    type="button"
+                    role="tab"
+                    aria-selected={accountTab === id}
+                    className={accountTab === id ? "active" : ""}
+                    onClick={() => setAccountTab(id as AccountTab)}
+                  >
+                    {label}
+                  </button>
                 ))}
-              </tbody>
-            </table>
-          </section>
-          <section className="grid two" style={{ marginTop: 22 }}>
-            <div className="card">
-              <h2 className="panel-title">AI 組合整體分析</h2>
-              <p className="subtle">
-                此組合主要偏向 {settings.allocationMethod === "score" ? "依客製化分數提高高排名股票權重" : "等額分散配置"}，
-                較強因子集中在 {recommendations[0]?.recommendation_reasons[0] || "目前條件下沒有足夠樣本"}。主要風險來自
-                {recommendations.find((item) => item.risk_level === "高")?.risk_reasons[0] || "模型估計期間、資料品質與市場狀態變化"}。
-              </p>
-            </div>
-            <div className="card">
-              <h2 className="panel-title">免責聲明</h2>
-              <p className="subtle">
-                本結果為量化模型之決策輔助，不代表未來報酬保證。因子曝險由歷史資料估計，可能受到市場狀態、資料品質與估計期間影響。本 MVP 尚未納入交易成本、稅費、流動性與滑價。
-              </p>
-            </div>
-          </section>
+              </div>
+              {accountTab === "profile" && (
+                <section className="grid two account-panel">
+                  <div className="card">
+                    <h2 className="panel-title">基本資料</h2>
+                    <p>顯示名稱：{user.displayName}</p>
+                    <p>電子信箱：{user.email}</p>
+                    <p>建立時間：{new Date(user.createdAt).toLocaleString("zh-TW")}</p>
+                  </div>
+                  <div className="card">
+                    <h2 className="panel-title">資料保存狀態</h2>
+                    <p>候選股票：{candidateIds.length} 檔</p>
+                    <p>投資組合歷史：登入後建立的紀錄會保存於資料庫。</p>
+                  </div>
+                </section>
+              )}
+              {accountTab === "history" && (
+                <section className="account-panel">
+                  {historyItems.length ? (
+                    <div className="grid two">
+                      {historyItems.map((run) => (
+                        <article className="card history-card" key={run.id}>
+                          <div>
+                            <h2 className="panel-title">{run.portfolioType === "custom" ? "自訂型" : run.portfolioType}</h2>
+                            <p className="subtle">
+                              {new Date(run.createdAt).toLocaleString("zh-TW")} · {run.candidateOnly ? "僅使用候選股票" : "完整股票池"} · 入選{" "}
+                              {run.result.recommendations.length} 檔
+                            </p>
+                          </div>
+                          <div className="factor-weight-list">
+                            {factorKeys.map((factor) => (
+                              <span key={factor}>
+                                {factorMeta[factor].label}：{run.factorWeights[factor]}%
+                              </span>
+                            ))}
+                          </div>
+                          <div className="row">
+                            <button
+                              className="button secondary"
+                              type="button"
+                              onClick={() => {
+                                setCreatedResult(run.result);
+                                setResultStale(false);
+                                navigate("results");
+                              }}
+                            >
+                              查看結果
+                            </button>
+                            <button className="button secondary" type="button" onClick={() => applyRunSettings(run)}>
+                              套用條件
+                            </button>
+                            <button className="button ghost" type="button" onClick={() => deleteRun(run.id)}>
+                              刪除
+                            </button>
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="card empty-state">
+                      <h2 className="panel-title">尚無歷史紀錄</h2>
+                      <p className="subtle">登入狀態下完成建立後，這裡會自動保存投資組合。</p>
+                    </div>
+                  )}
+                  <div className="pagination-row">
+                    <button className="button secondary" type="button" disabled={historyPage === 1} onClick={() => setHistoryPage((current) => Math.max(1, current - 1))}>
+                      上一頁
+                    </button>
+                    <span className="subtle">
+                      第 {historyPage} / {historyTotalPages} 頁
+                    </span>
+                    <button
+                      className="button secondary"
+                      type="button"
+                      disabled={historyPage === historyTotalPages}
+                      onClick={() => setHistoryPage((current) => Math.min(historyTotalPages, current + 1))}
+                    >
+                      下一頁
+                    </button>
+                  </div>
+                </section>
+              )}
+              {accountTab === "candidates" && (
+                <section className="account-panel">
+                  <div className="section-head">
+                    <div>
+                      <h2>候選股票</h2>
+                      <p>目前候選股票：{candidateIds.length} 檔。登入後會同步保存到帳號。</p>
+                    </div>
+                    <button className="button ghost" type="button" disabled={!candidateIds.length} onClick={clearCandidates}>
+                      清空候選
+                    </button>
+                  </div>
+                  {candidateStocks.length ? (
+                    <div className="grid four">
+                      {candidateStocks.map((stock) => (
+                        <StockCard
+                          key={stock.stock_id}
+                          stock={stock}
+                          isCandidate
+                          onCandidate={() => toggleCandidate(stock.stock_id)}
+                          onDetail={() => {
+                            setSelectedId(stock.stock_id);
+                            navigate("detail");
+                          }}
+                        />
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="card empty-state">
+                      <h2 className="panel-title">尚未加入候選股票</h2>
+                      <p className="subtle">到股票探索頁選擇你想納入觀察的股票。</p>
+                      <button className="button" type="button" onClick={() => navigate("explore")}>
+                        前往股票探索
+                      </button>
+                    </div>
+                  )}
+                </section>
+              )}
+            </>
+          )}
         </main>
       )}
 
@@ -1883,7 +2647,7 @@ export default function Home() {
       )}
 
       <footer className="footer-note">
-        資料欄位命名遵循 stock_id、factor_percentile、factor_star、custom_score、allocation_weight 等一致規格。此 MVP 使用樣本資料展示流程，正式版需串接 TEJ/API 與批次因子引擎。
+        本網站提供之股票資訊、因子分數、投資組合建議與 AI 說明僅供學術專題展示與投資決策輔助參考，不構成任何投資建議、招攬或報酬保證。投資一定有風險，實際交易前請自行評估並承擔盈虧責任。
       </footer>
     </div>
   );
