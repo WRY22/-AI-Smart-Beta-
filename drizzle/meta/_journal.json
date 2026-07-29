@@ -8,6 +8,20 @@
       "when": 1785331600968,
       "tag": "0000_clean_echo",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1785337115961,
+      "tag": "0001_zippy_sandman",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1785337168465,
+      "tag": "0002_cheerful_northstar",
+      "breakpoints": true
     }
   ]
 }

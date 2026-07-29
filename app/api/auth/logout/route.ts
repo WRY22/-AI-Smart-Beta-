@@ -7,5 +7,5 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error("Logout failed", error);
   }
-  return Response.json({ ok: true }, { headers: { "Set-Cookie": clearSessionCookie() } });
+  return Response.json({ ok: true }, { headers: { "Set-Cookie": clearSessionCookie(request.url) } });
 }

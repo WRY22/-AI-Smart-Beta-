@@ -2,6 +2,7 @@ import { env } from "cloudflare:workers";
 
 export type SessionUser = {
   id: string;
+  username: string;
   email: string;
   displayName: string;
   createdAt: string;
@@ -26,6 +27,7 @@ export async function ensureDatabaseSchema() {
     db.prepare(
       `CREATE TABLE IF NOT EXISTS users (
         id text PRIMARY KEY NOT NULL,
+        username text,
         email text NOT NULL,
         display_name text NOT NULL,
         password_hash text NOT NULL,
@@ -58,6 +60,8 @@ export async function ensureDatabaseSchema() {
       `CREATE TABLE IF NOT EXISTS portfolio_runs (
         id text PRIMARY KEY NOT NULL,
         user_id text NOT NULL,
+        name text,
+        is_saved integer NOT NULL DEFAULT 1,
         portfolio_type text NOT NULL,
         conditions text NOT NULL,
         factor_weights text NOT NULL,
@@ -66,9 +70,27 @@ export async function ensureDatabaseSchema() {
         candidate_tickers text NOT NULL,
         result text NOT NULL,
         created_at text NOT NULL,
+        updated_at text,
+        expires_at text,
+        client_request_id text,
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE cascade
       )`,
     ),
+  ]);
+  await ensureColumn("users", "username", "text");
+  await ensureColumn("portfolio_runs", "name", "text");
+  await ensureColumn("portfolio_runs", "is_saved", "integer NOT NULL DEFAULT 1");
+  await ensureColumn("portfolio_runs", "updated_at", "text");
+  await ensureColumn("portfolio_runs", "expires_at", "text");
+  await ensureColumn("portfolio_runs", "client_request_id", "text");
+  await db.batch([
+    db.prepare("UPDATE users SET username = id WHERE username IS NULL OR username = ''"),
+    db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS users_username_unique ON users (username)"),
+    db.prepare("UPDATE portfolio_runs SET name = portfolio_type || '－' || substr(created_at, 1, 10) WHERE name IS NULL OR name = ''"),
+    db.prepare("UPDATE portfolio_runs SET updated_at = created_at WHERE updated_at IS NULL OR updated_at = ''"),
+    db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS portfolio_runs_user_client_request_unique ON portfolio_runs (user_id, client_request_id)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS portfolio_runs_user_saved_created_idx ON portfolio_runs (user_id, is_saved, created_at)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS portfolio_runs_user_expires_idx ON portfolio_runs (user_id, expires_at)"),
   ]);
 }
 
@@ -87,6 +109,29 @@ export function normalizeEmail(value: unknown) {
 
 export function isValidEmail(email: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+export function normalizeUsername(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+export function usernameError(username: string) {
+  if (!username) return "請輸入使用者名稱。";
+  if (username.length < 3 || username.length > 20) return "使用者名稱需為 3 至 20 個字元。";
+  if (!/^[\p{Script=Han}A-Za-z0-9_]+$/u.test(username)) return "使用者名稱只能使用中文、英文字母、數字及底線。";
+  return "";
+}
+
+export function normalizePortfolioName(value: unknown, fallback: string) {
+  const name = typeof value === "string" ? value.trim() : "";
+  return name || fallback;
+}
+
+export function portfolioNameError(name: string) {
+  if (!name.trim()) return "投資組合名稱不可空白。";
+  if (name.length > 50) return "投資組合名稱最多 50 個字元。";
+  if (/[\u0000-\u001F\u007F]/.test(name)) return "投資組合名稱不可包含控制字元。";
+  return "";
 }
 
 export function isValidTicker(value: string) {
@@ -152,12 +197,22 @@ export async function createSession(userId: string) {
   return { token, expiresAt };
 }
 
-export function sessionCookie(token: string, expiresAt: string) {
-  return `${SESSION_COOKIE}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Secure; Expires=${new Date(expiresAt).toUTCString()}`;
+function secureCookieSuffix(requestUrl?: string) {
+  if (!requestUrl) return " Secure;";
+  try {
+    return new URL(requestUrl).protocol === "https:" ? " Secure;" : "";
+  } catch {
+    return " Secure;";
+  }
 }
 
-export function clearSessionCookie() {
-  return `${SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Secure; Max-Age=0`;
+export function sessionCookie(token: string, expiresAt: string, requestUrl?: string) {
+  const maxAge = Math.max(0, Math.floor((new Date(expiresAt).getTime() - Date.now()) / 1000));
+  return `${SESSION_COOKIE}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge};${secureCookieSuffix(requestUrl)} Expires=${new Date(expiresAt).toUTCString()}`;
+}
+
+export function clearSessionCookie(requestUrl?: string) {
+  return `${SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax;${secureCookieSuffix(requestUrl)} Max-Age=0`;
 }
 
 export async function getCurrentUser(request: Request): Promise<SessionUser | null> {
@@ -167,6 +222,7 @@ export async function getCurrentUser(request: Request): Promise<SessionUser | nu
   const row = await getDb()
     .prepare(
       `SELECT users.id, users.email, users.display_name as displayName, users.created_at as createdAt
+       , users.username as username
        FROM sessions
        JOIN users ON users.id = sessions.user_id
        WHERE sessions.token_hash = ? AND sessions.expires_at > ?`,
@@ -189,11 +245,17 @@ export async function destroyCurrentSession(request: Request) {
 }
 
 function getCookie(cookieHeader: string, name: string) {
-  return cookieHeader
+  const value = cookieHeader
     .split(";")
     .map((part) => part.trim())
     .find((part) => part.startsWith(`${name}=`))
     ?.slice(name.length + 1);
+  if (!value) return undefined;
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
 }
 
 function randomBase64(byteLength: number) {
@@ -223,4 +285,11 @@ function constantTimeEqual(a: string, b: string) {
   let diff = 0;
   for (let index = 0; index < a.length; index += 1) diff |= a.charCodeAt(index) ^ b.charCodeAt(index);
   return diff === 0;
+}
+
+async function ensureColumn(table: string, column: string, definition: string) {
+  const db = getDb();
+  const columns = await db.prepare(`PRAGMA table_info(${table})`).all<{ name: string }>();
+  if ((columns.results ?? []).some((row) => row.name === column)) return;
+  await db.prepare(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`).run();
 }

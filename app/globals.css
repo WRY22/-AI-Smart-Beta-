@@ -922,12 +922,17 @@ tbody tr:hover {
 .factor-score-list {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
   gap: 7px;
 }
 
 .factor-weight-list span,
 .factor-score-list span {
   display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
   border: 1px solid var(--line);
   border-radius: 999px;
   padding: 4px 8px;
@@ -935,7 +940,45 @@ tbody tr:hover {
   background: var(--surface-muted);
   font-size: 12px;
   font-weight: 750;
+  line-height: 1.2;
   white-space: nowrap;
+}
+
+.save-panel {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--surface-muted);
+}
+
+.name-counter,
+.field-hint {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.field-hint.invalid {
+  color: var(--warn);
+  font-weight: 750;
+}
+
+.inline-action {
+  margin-left: 8px;
+}
+
+.result-save-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.history-mode-tabs {
+  width: fit-content;
 }
 
 .password-label {
@@ -964,6 +1007,11 @@ tbody tr:hover {
   border-radius: 6px;
   color: var(--brand-dark);
   background: transparent;
+  cursor: pointer;
+}
+
+.password-toggle svg {
+  display: block;
 }
 
 .password-toggle:hover,
@@ -1190,5 +1238,19 @@ tbody tr:hover {
 
   .stock-card {
     min-height: 0;
+  }
+
+  .result-save-card {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .result-save-card .row,
+  .inline-action {
+    width: 100%;
+  }
+
+  .inline-action {
+    margin: 8px 0 0;
   }
 }

@@ -111,6 +111,7 @@ type RecommendationResult = {
 
 type AppUser = {
   id: string;
+  username: string;
   email: string;
   displayName: string;
   createdAt: string;
@@ -118,6 +119,8 @@ type AppUser = {
 
 type PortfolioRun = {
   id: string;
+  name: string;
+  isSaved: boolean;
   portfolioType: string;
   conditions: Partial<PortfolioSettings>;
   factorWeights: Record<FactorKey, number>;
@@ -126,10 +129,14 @@ type PortfolioRun = {
   candidateTickers: string[];
   result: RecommendationResult;
   createdAt: string;
+  updatedAt?: string;
+  expiresAt?: string | null;
 };
 
 type HomeCategoryKey = "popular" | "overall" | "momentum" | "stable";
 type AccountTab = "profile" | "history" | "candidates";
+type HistoryMode = "recent" | "saved";
+type SaveStatus = "idle" | "saving" | "saved" | "error";
 
 const factorMeta: Record<
   FactorKey,
@@ -1150,6 +1157,89 @@ function isValidEmailText(email: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
 }
 
+function isValidUsernameText(username: string) {
+  return /^[\p{Script=Han}A-Za-z0-9_]{3,20}$/u.test(username.trim());
+}
+
+function defaultPortfolioRunName(portfolioType: string, date = new Date()) {
+  return `${portfolioType}－${date.toLocaleString("zh-TW", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  })}`;
+}
+
+function createClientRequestId() {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
+  return `req-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function saveGuestRecentResult(result: RecommendationResult, settings: PortfolioSettings, candidateIds: string[]) {
+  if (typeof window === "undefined") return;
+  const createdAt = new Date();
+  const expiresAt = new Date(createdAt.getTime() + 7 * 86400000).toISOString();
+  const item = {
+    id: createClientRequestId(),
+    name: defaultPortfolioRunName(settings.portfolioType, createdAt),
+    isSaved: false,
+    portfolioType: settings.portfolioType,
+    conditions: {
+      totalAmount: settings.totalAmount,
+      stockCount: settings.stockCount,
+      minOverallStar: settings.minOverallStar,
+      riskPreference: settings.riskPreference,
+      excludeFatal: settings.excludeFatal,
+      limitIndustry: settings.limitIndustry,
+      industryCap: settings.industryCap,
+    },
+    factorWeights: settings.factorWeights,
+    allocationSettings: {
+      allocationMethod: settings.allocationMethod,
+      maxSingleWeight: settings.maxSingleWeight,
+      minSingleWeight: settings.minSingleWeight,
+      reserveCashPercent: settings.reserveCashPercent,
+      oddLots: settings.oddLots,
+    },
+    candidateOnly: settings.candidateOnly,
+    candidateTickers: candidateIds,
+    result,
+    createdAt: createdAt.toISOString(),
+    expiresAt,
+  };
+  const stored = window.localStorage.getItem("smartBetaGuestRecentRuns");
+  const rows = stored ? (JSON.parse(stored) as typeof item[]) : [];
+  const active = rows.filter((row) => Date.parse(row.expiresAt) > Date.now());
+  window.localStorage.setItem("smartBetaGuestRecentRuns", JSON.stringify([item, ...active].slice(0, 10)));
+}
+
+function daysUntil(expiresAt?: string | null) {
+  if (!expiresAt) return "";
+  const days = Math.max(0, Math.ceil((Date.parse(expiresAt) - Date.now()) / 86400000));
+  return days ? `將於 ${days} 天後自動刪除` : "即將自動刪除";
+}
+
+function EyeIcon({ off = false }: { off?: boolean }) {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      {off ? (
+        <>
+          <path d="M3 3l18 18" />
+          <path d="M10.6 10.6a2 2 0 0 0 2.8 2.8" />
+          <path d="M9.9 4.2A10.5 10.5 0 0 1 12 4c5 0 9 4.5 10 8a12.4 12.4 0 0 1-3 4.6" />
+          <path d="M6.1 6.1C4.1 7.5 2.7 9.6 2 12c1 3.5 5 8 10 8 1.6 0 3.1-.4 4.4-1.1" />
+        </>
+      ) : (
+        <>
+          <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z" />
+          <circle cx="12" cy="12" r="3" />
+        </>
+      )}
+    </svg>
+  );
+}
+
 function PasswordField({
   id,
   label,
@@ -1186,7 +1276,7 @@ function PasswordField({
           aria-pressed={visible}
           onClick={onToggle}
         >
-          <span aria-hidden="true">{visible ? "◉" : "◌"}</span>
+          <EyeIcon off={visible} />
         </button>
       </span>
     </label>
@@ -1211,8 +1301,8 @@ export default function Home() {
   const [activeInfoId, setActiveInfoId] = useState<string | null>(null);
   const [user, setUser] = useState<AppUser | null>(null);
   const [authMessage, setAuthMessage] = useState("");
-  const [loginForm, setLoginForm] = useState({ email: "", password: "" });
-  const [registerForm, setRegisterForm] = useState({ displayName: "", email: "", password: "", confirmPassword: "" });
+  const [loginForm, setLoginForm] = useState({ identity: "", password: "" });
+  const [registerForm, setRegisterForm] = useState({ username: "", email: "", password: "", confirmPassword: "" });
   const [passwordVisibility, setPasswordVisibility] = useState({
     login: false,
     register: false,
@@ -1231,6 +1321,16 @@ export default function Home() {
   const [historyItems, setHistoryItems] = useState<PortfolioRun[]>([]);
   const [historyPage, setHistoryPage] = useState(1);
   const [historyTotalPages, setHistoryTotalPages] = useState(1);
+  const [historyMode, setHistoryMode] = useState<HistoryMode>("recent");
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState("");
+  const [saveAfterCreate, setSaveAfterCreate] = useState(true);
+  const [portfolioName, setPortfolioName] = useState(defaultPortfolioRunName(initialSettings.portfolioType));
+  const [savedRunId, setSavedRunId] = useState<string | null>(null);
+  const [savedRunName, setSavedRunName] = useState("");
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
+  const [saveMessage, setSaveMessage] = useState("");
+  const [clientRequestId, setClientRequestId] = useState(createClientRequestId);
   const builderContentRef = useRef<HTMLElement | null>(null);
 
   const selectedStock = stocks.find((stock) => stock.stock_id === selectedId) || stocks[0];
@@ -1304,10 +1404,11 @@ export default function Home() {
   const registerConfirmReady = registerForm.confirmPassword.length > 0;
   const registerConfirmValid = registerConfirmReady && registerForm.password === registerForm.confirmPassword;
   const registerFormValid =
-    Boolean(registerForm.displayName.trim()) &&
+    isValidUsernameText(registerForm.username) &&
     isValidEmailText(registerForm.email) &&
     registerPasswordValid &&
     registerConfirmValid;
+  const portfolioNameLength = portfolioName.trim().length || defaultPortfolioRunName(settings.portfolioType).length;
 
   useEffect(() => {
     queueMicrotask(() => {
@@ -1315,7 +1416,7 @@ export default function Home() {
       setCandidateIds(storedIds);
       setSettings(loadStoredSettings());
       setStorageReady(true);
-      fetch("/api/auth/me")
+      fetch("/api/auth/me", { credentials: "include" })
         .then((response) => response.json())
         .then(async (data: { user: AppUser | null }) => {
           setUser(data.user);
@@ -1358,26 +1459,20 @@ export default function Home() {
 
   useEffect(() => {
     if (!user || accountTab !== "history") return;
-    void fetch(`/api/portfolio-runs?page=${historyPage}&pageSize=6`)
-      .then((response) => {
-        if (!response.ok) return null;
-        return response.json() as Promise<{ items: PortfolioRun[]; totalPages: number }>;
-      })
-      .then((data) => {
-        if (!data) return;
-        setHistoryItems(data.items);
-        setHistoryTotalPages(data.totalPages);
-      });
-  }, [user, accountTab, historyPage]);
+    void loadHistory(historyPage, historyMode);
+    // loadHistory is a local event-style helper; these state dependencies define when the list should refresh.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, accountTab, historyPage, historyMode]);
 
   async function mergeServerCandidates(localIds: string[]) {
     try {
       await fetch("/api/candidates", {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ tickers: localIds }),
       });
-      const response = await fetch("/api/candidates");
+      const response = await fetch("/api/candidates", { credentials: "include" });
       if (!response.ok) return;
       const data = (await response.json()) as { candidates: { ticker: string }[] };
       setCandidateIds(data.candidates.map((item) => item.ticker));
@@ -1416,11 +1511,12 @@ export default function Home() {
       if (shouldAdd) {
         await fetch("/api/candidates", {
           method: "POST",
+          credentials: "include",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ tickers: [id] }),
         });
       } else {
-        await fetch(`/api/candidates?ticker=${encodeURIComponent(id)}`, { method: "DELETE" });
+        await fetch(`/api/candidates?ticker=${encodeURIComponent(id)}`, { method: "DELETE", credentials: "include" });
       }
     } catch {
       setAuthMessage("候選清單已先保存在此裝置，稍後登入後會再同步。");
@@ -1431,15 +1527,16 @@ export default function Home() {
     if (!window.confirm("確定要清空所有候選股票嗎？")) return;
     setCandidateIds([]);
     if (createdResult) setResultStale(true);
-    if (user) await fetch("/api/candidates", { method: "DELETE" });
+    if (user) await fetch("/api/candidates", { method: "DELETE", credentials: "include" });
   };
 
   const signIn = async () => {
     setAuthMessage("");
     const response = await fetch("/api/auth/login", {
       method: "POST",
+      credentials: "include",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(loginForm),
+      body: JSON.stringify({ email: loginForm.identity, password: loginForm.password }),
     });
     const data = await response.json();
     if (!response.ok) {
@@ -1459,8 +1556,9 @@ export default function Home() {
     }
     const response = await fetch("/api/auth/register", {
       method: "POST",
+      credentials: "include",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(registerForm),
+      body: JSON.stringify({ ...registerForm, displayName: registerForm.username }),
     });
     const data = await response.json();
     if (!response.ok) {
@@ -1473,27 +1571,54 @@ export default function Home() {
   };
 
   const signOut = async () => {
-    await fetch("/api/auth/logout", { method: "POST" });
+    await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
     setUser(null);
     setHistoryItems([]);
     navigate("home");
   };
 
-  async function loadHistory(page = 1) {
+  const startNewAccount = async () => {
+    await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
+    setUser(null);
+    setHistoryItems([]);
+    setAuthMessage("");
+    setLoginForm({ identity: "", password: "" });
+    setRegisterForm({ username: "", email: "", password: "", confirmPassword: "" });
+    navigate("register");
+  };
+
+  async function loadHistory(page = 1, mode = historyMode) {
     if (!user) return;
-    const response = await fetch(`/api/portfolio-runs?page=${page}&pageSize=6`);
-    if (!response.ok) return;
-    const data = (await response.json()) as { items: PortfolioRun[]; totalPages: number };
-    setHistoryItems(data.items);
-    setHistoryTotalPages(data.totalPages);
+    setHistoryLoading(true);
+    setHistoryError("");
+    try {
+      const response = await fetch(`/api/portfolio-runs?mode=${mode}&page=${page}&pageSize=6`, { credentials: "include" });
+      const data = await response.json();
+      if (!response.ok) {
+        setHistoryError(data.error ?? "目前無法讀取投資組合紀錄。");
+        return;
+      }
+      setHistoryItems(data.items);
+      setHistoryTotalPages(data.totalPages);
+    } catch {
+      setHistoryError("網路連線失敗，請稍後再試。");
+    } finally {
+      setHistoryLoading(false);
+    }
   }
 
-  const saveHistory = async (result: RecommendationResult) => {
-    if (!user) return;
-    await fetch("/api/portfolio-runs", {
+  const saveHistory = async (result: RecommendationResult, options: { isSaved: boolean; name?: string; requestId?: string }) => {
+    if (!user) return null;
+    setSaveStatus("saving");
+    setSaveMessage("");
+    const response = await fetch("/api/portfolio-runs", {
       method: "POST",
+      credentials: "include",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        name: options.name,
+        isSaved: options.isSaved,
+        clientRequestId: options.requestId ?? clientRequestId,
         portfolioType: settings.portfolioType,
         conditions: {
           totalAmount: settings.totalAmount,
@@ -1517,6 +1642,24 @@ export default function Home() {
         result,
       }),
     });
+    const data = await response.json();
+    if (!response.ok) {
+      setSaveStatus("error");
+      setSaveMessage(data.error ?? "結果已產生，但暫時無法儲存，請稍後重試。");
+      return null;
+    }
+    setSavedRunId(data.id);
+    setSavedRunName(data.name ?? options.name ?? portfolioName);
+    setSaveStatus("saved");
+    setSaveMessage(options.isSaved ? `已儲存為：${data.name ?? options.name ?? portfolioName}` : "已加入近期結果，會保留 7 天。");
+    return data as { id: string; name?: string; isSaved?: boolean; expiresAt?: string | null };
+  };
+
+  const saveCurrentResult = async (isSaved = true) => {
+    if (!createdResult || saveStatus === "saving") return;
+    const fallback = defaultPortfolioRunName(settings.portfolioType);
+    const name = (portfolioName.trim() || fallback).slice(0, 50);
+    await saveHistory(createdResult, { isSaved, name, requestId: isSaved ? `${clientRequestId}:saved` : clientRequestId });
   };
 
   const createPortfolio = async () => {
@@ -1526,8 +1669,22 @@ export default function Home() {
       const result = buildRecommendations(settings, candidateIds);
       setCreatedResult(result);
       setResultStale(false);
+      setSavedRunId(null);
+      setSavedRunName("");
+      setSaveStatus("idle");
+      setSaveMessage("");
       setCompletedSteps([1, 2, 3, 4]);
-      await saveHistory(result);
+      if (user) {
+        await saveHistory(result, {
+          isSaved: saveAfterCreate,
+          name: portfolioName.trim() || defaultPortfolioRunName(settings.portfolioType),
+          requestId: clientRequestId,
+        });
+      } else {
+        saveGuestRecentResult(result, settings, candidateIds);
+        setSaveMessage("近期結果會在此瀏覽器保留 7 天。登入後可永久保存並在其他裝置查看。");
+      }
+      setClientRequestId(createClientRequestId());
       navigate("results");
     } finally {
       setIsCreating(false);
@@ -1554,8 +1711,56 @@ export default function Home() {
 
   const deleteRun = async (id: string) => {
     if (!window.confirm("確定要刪除這筆投資組合紀錄嗎？")) return;
-    await fetch(`/api/portfolio-runs/${id}`, { method: "DELETE" });
-    await loadHistory(historyPage);
+    await fetch(`/api/portfolio-runs/${id}`, { method: "DELETE", credentials: "include" });
+    await loadHistory(historyPage, historyMode);
+  };
+
+  const renameRun = async (run: PortfolioRun) => {
+    const nextName = window.prompt("請輸入新的投資組合名稱（最多 50 字）", run.name);
+    if (nextName === null) return;
+    const trimmed = nextName.trim();
+    if (!trimmed || trimmed.length > 50) {
+      window.alert("名稱需為 1 至 50 個字元。");
+      return;
+    }
+    const response = await fetch(`/api/portfolio-runs/${run.id}`, {
+      method: "PATCH",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: trimmed }),
+    });
+    if (!response.ok) {
+      const data = await response.json();
+      window.alert(data.error ?? "重新命名失敗，請稍後再試。");
+      return;
+    }
+    await loadHistory(historyPage, historyMode);
+    if (savedRunId === run.id) setSavedRunName(trimmed);
+  };
+
+  const saveRunPermanently = async (run: PortfolioRun) => {
+    const response = await fetch(`/api/portfolio-runs/${run.id}`, {
+      method: "PATCH",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ isSaved: true, name: run.name }),
+    });
+    if (!response.ok) {
+      const data = await response.json();
+      window.alert(data.error ?? "儲存失敗，請稍後再試。");
+      return;
+    }
+    await loadHistory(historyPage, historyMode);
+  };
+
+  const showRunResult = (run: PortfolioRun) => {
+    setCreatedResult(run.result);
+    setResultStale(false);
+    setSavedRunId(run.isSaved ? run.id : null);
+    setSavedRunName(run.isSaved ? run.name : "");
+    setSaveStatus(run.isSaved ? "saved" : "idle");
+    setSaveMessage(run.isSaved ? `已儲存為：${run.name}` : "這是近期結果，尚未永久儲存。");
+    navigate("results");
   };
 
   const firstInvalidStep = () => {
@@ -1566,9 +1771,14 @@ export default function Home() {
   };
 
   const scrollToBuilderContent = () => {
-    window.setTimeout(() => {
-      builderContentRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-    }, 0);
+    window.requestAnimationFrame(() => {
+      const target = builderContentRef.current;
+      if (!target) return;
+      const topbarHeight = document.querySelector<HTMLElement>(".topbar")?.offsetHeight ?? 0;
+      const stepperHeight = document.querySelector<HTMLElement>(".stepper")?.offsetHeight ?? 0;
+      const top = target.getBoundingClientRect().top + window.scrollY - topbarHeight - stepperHeight - 18;
+      window.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+    });
   };
 
   const goToStep = (nextStep: number) => {
@@ -1635,6 +1845,9 @@ export default function Home() {
             <>
               <button className={view === "account" ? "button compact-button" : "button secondary compact-button"} type="button" onClick={() => navigate("account")}>
                 我的帳戶
+              </button>
+              <button className="button secondary compact-button" type="button" onClick={startNewAccount}>
+                註冊新帳號
               </button>
               <button className="button ghost compact-button" type="button" onClick={signOut}>
                 登出
@@ -2229,6 +2442,7 @@ export default function Home() {
                       onClick={() => {
                         setPreset(name);
                         updateSetting("portfolioType", name);
+                        setPortfolioName(defaultPortfolioRunName(name));
                         if (name !== "自訂型") {
                           updateSetting("factorWeights", presets[name]);
                         }
@@ -2394,10 +2608,49 @@ export default function Home() {
                       {error}
                     </p>
                   ))}
-                  {!user && <p className="notice compact">目前以訪客模式建立。登入後建立的投資組合會自動保存至歷史紀錄。</p>}
-                  <button className="button" disabled={!canGenerate || isCreating} onClick={createPortfolio}>
-                    {isCreating ? "建立中..." : "確認並建立投資組合"}
-                  </button>
+                  {user ? (
+                    <div className="save-panel">
+                      <div className="candidate-control">
+                        <label className="row" htmlFor="save-after-create">
+                          <input
+                            id="save-after-create"
+                            type="checkbox"
+                            checked={saveAfterCreate}
+                            onChange={(event) => setSaveAfterCreate(event.target.checked)}
+                          />
+                          <strong>產生後儲存至歷史紀錄</strong>
+                        </label>
+                        <InfoButton
+                          id="save-after-create-info"
+                          title="產生後儲存至歷史紀錄"
+                          body="勾選後，建立完成的投資組合會以你設定的名稱永久保存到帳號。未勾選時，只會放在近期結果中，保留 7 天後自動到期。"
+                          activeInfoId={activeInfoId}
+                          setActiveInfoId={setActiveInfoId}
+                          ariaLabel="查看產生後儲存至歷史紀錄說明"
+                        />
+                      </div>
+                      {saveAfterCreate && (
+                        <label className="label">
+                          投資組合名稱
+                          <input
+                            className="field"
+                            maxLength={50}
+                            value={portfolioName}
+                            onChange={(event) => setPortfolioName(event.target.value.slice(0, 50))}
+                            placeholder={defaultPortfolioRunName(settings.portfolioType)}
+                          />
+                          <span className="name-counter">{portfolioNameLength}/50</span>
+                        </label>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="notice compact">
+                      目前以訪客模式建立，結果會在此瀏覽器保留 7 天。登入後可命名並永久保存到歷史紀錄。
+                      <button className="button ghost compact-button inline-action" type="button" onClick={() => navigate("login")}>
+                        前往登入
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -2413,8 +2666,8 @@ export default function Home() {
               >
                 上一步
               </button>
-              <button className="button" disabled={step === 4} onClick={nextStep}>
-                下一步
+              <button className="button" disabled={step === 4 ? !canGenerate || isCreating : false} onClick={step === 4 ? createPortfolio : nextStep}>
+                {step === 4 ? (isCreating ? "正在產生投資組合..." : "產生投資組合") : "下一步"}
               </button>
             </div>
           </section>
@@ -2435,7 +2688,7 @@ export default function Home() {
           {!activeResult ? (
             <section className="card empty-state">
               <h2 className="panel-title">尚未建立投資組合</h2>
-              <p className="subtle">請先到建立投資組合頁完成四個步驟，並按下「確認並建立投資組合」。</p>
+              <p className="subtle">請先到建立投資組合頁完成四個步驟，並按下「產生投資組合」。</p>
               <button className="button" type="button" onClick={() => navigate("builder")}>
                 前往建立
               </button>
@@ -2448,6 +2701,49 @@ export default function Home() {
                   {error}
                 </p>
               ))}
+              <section className="card result-save-card">
+                <div>
+                  <h2 className="panel-title">結果保存</h2>
+                  <p className="subtle">
+                    {user
+                      ? savedRunId
+                        ? `此結果已儲存為「${savedRunName || portfolioName}」。`
+                        : "此結果目前尚未永久儲存，你可以保留結果並稍後保存。"
+                      : "訪客結果會保存在此瀏覽器 7 天。登入後產生的結果可永久保存到帳號。"}
+                  </p>
+                  {saveMessage && <p className={saveStatus === "error" ? "warning-box" : "notice compact"}>{saveMessage}</p>}
+                </div>
+                <div className="row">
+                  {user && !savedRunId && (
+                    <button className="button" type="button" disabled={saveStatus === "saving"} onClick={() => saveCurrentResult(true)}>
+                      {saveStatus === "saving" ? "儲存中..." : "儲存此結果"}
+                    </button>
+                  )}
+                  {user && savedRunId && (
+                    <>
+                      <button
+                        className="button secondary"
+                        type="button"
+                        onClick={() => {
+                          setAccountTab("history");
+                          setHistoryMode("saved");
+                          navigate("account");
+                        }}
+                      >
+                        查看已儲存
+                      </button>
+                      <button className="button ghost" type="button" onClick={() => deleteRun(savedRunId)}>
+                        刪除此紀錄
+                      </button>
+                    </>
+                  )}
+                  {!user && (
+                    <button className="button secondary" type="button" onClick={() => navigate("login")}>
+                      登入後保存
+                    </button>
+                  )}
+                </div>
+              </section>
               {!activeResult.validationErrors.length && recommendations.length < settings.stockCount && (
                 <p className="warning-box">
                   符合條件股票不足：目前僅 {recommendations.length} 支。可能原因包含最低星等、排除高風險組合提醒、保守風險偏好或產業上限過嚴。
@@ -2607,12 +2903,11 @@ export default function Home() {
             <h2 className="panel-title">登入帳號</h2>
             <p className="subtle">登入後可同步候選股票並保存每次建立的投資組合紀錄。</p>
             <label className="label">
-              電子信箱
+              使用者名稱或電子信箱
               <input
                 className="field"
-                type="email"
-                value={loginForm.email}
-                onChange={(event) => setLoginForm((current) => ({ ...current, email: event.target.value }))}
+                value={loginForm.identity}
+                onChange={(event) => setLoginForm((current) => ({ ...current, identity: event.target.value }))}
               />
             </label>
             <PasswordField
@@ -2640,12 +2935,15 @@ export default function Home() {
             <h2 className="panel-title">建立帳號</h2>
             <p className="subtle">註冊後，瀏覽器中的候選清單會合併到你的帳號。</p>
             <label className="label">
-              顯示名稱
+              使用者名稱
               <input
                 className="field"
-                value={registerForm.displayName}
-                onChange={(event) => setRegisterForm((current) => ({ ...current, displayName: event.target.value }))}
+                value={registerForm.username}
+                onChange={(event) => setRegisterForm((current) => ({ ...current, username: event.target.value }))}
               />
+              <span className={registerForm.username && !isValidUsernameText(registerForm.username) ? "field-hint invalid" : "field-hint"}>
+                3 至 20 個字元，可使用中文、英文字母、數字及底線。
+              </span>
             </label>
             <label className="label">
               電子信箱
@@ -2655,6 +2953,7 @@ export default function Home() {
                 value={registerForm.email}
                 onChange={(event) => setRegisterForm((current) => ({ ...current, email: event.target.value }))}
               />
+              <span className="field-hint">電子信箱僅用於帳號登入、身份辨識及密碼復原，不會公開顯示。</span>
             </label>
             <PasswordField
               id="register-password"
@@ -2746,6 +3045,7 @@ export default function Home() {
                 <section className="grid two account-panel">
                   <div className="card">
                     <h2 className="panel-title">基本資料</h2>
+                    <p>使用者名稱：{user.username}</p>
                     <p>顯示名稱：{user.displayName}</p>
                     <p>電子信箱：{user.email}</p>
                     <p>建立時間：{new Date(user.createdAt).toLocaleString("zh-TW")}</p>
@@ -2759,16 +3059,55 @@ export default function Home() {
               )}
               {accountTab === "history" && (
                 <section className="account-panel">
-                  {historyItems.length ? (
+                  <div className="section-head">
+                    <div>
+                      <h2>{historyMode === "recent" ? "近期結果" : "已儲存"}</h2>
+                      <p>{historyMode === "recent" ? "近期結果會保留 7 天，適合暫存剛產生但尚未命名收藏的投資組合。" : "已儲存紀錄會永久保留，除非你手動刪除。"}</p>
+                    </div>
+                    <div className="segmented history-mode-tabs" role="tablist" aria-label="歷史紀錄類型">
+                      <button
+                        type="button"
+                        role="tab"
+                        aria-selected={historyMode === "recent"}
+                        className={historyMode === "recent" ? "active" : ""}
+                        onClick={() => {
+                          setHistoryMode("recent");
+                          setHistoryPage(1);
+                        }}
+                      >
+                        近期結果
+                      </button>
+                      <button
+                        type="button"
+                        role="tab"
+                        aria-selected={historyMode === "saved"}
+                        className={historyMode === "saved" ? "active" : ""}
+                        onClick={() => {
+                          setHistoryMode("saved");
+                          setHistoryPage(1);
+                        }}
+                      >
+                        已儲存
+                      </button>
+                    </div>
+                  </div>
+                  {historyLoading && <p className="notice compact">正在讀取投資組合紀錄...</p>}
+                  {historyError && <p className="warning-box">{historyError}</p>}
+                  {!historyLoading && historyItems.length ? (
                     <div className="grid two">
                       {historyItems.map((run) => (
                         <article className="card history-card" key={run.id}>
                           <div>
-                            <h2 className="panel-title">{run.portfolioType === "custom" ? "自訂型" : run.portfolioType}</h2>
+                            <h2 className="panel-title">{run.name || (run.portfolioType === "custom" ? "自訂型" : run.portfolioType)}</h2>
                             <p className="subtle">
-                              {new Date(run.createdAt).toLocaleString("zh-TW")} · {run.candidateOnly ? "僅使用候選股票" : "完整股票池"} · 入選{" "}
-                              {run.result.recommendations.length} 檔
+                              {run.portfolioType === "custom" ? "自訂型" : run.portfolioType} · {new Date(run.createdAt).toLocaleString("zh-TW")} ·{" "}
+                              {run.candidateOnly ? "僅使用候選股票" : "完整股票池"} · 入選 {run.result.recommendations.length} 檔
                             </p>
+                            {run.isSaved ? (
+                              <p className="subtle">最後更新：{new Date(run.updatedAt || run.createdAt).toLocaleString("zh-TW")}</p>
+                            ) : (
+                              <p className="subtle">近期結果剩餘：{daysUntil(run.expiresAt)} 天</p>
+                            )}
                           </div>
                           <div className="factor-weight-list">
                             {factorKeys.map((factor) => (
@@ -2789,17 +3128,23 @@ export default function Home() {
                             <button
                               className="button secondary"
                               type="button"
-                              onClick={() => {
-                                setCreatedResult(run.result);
-                                setResultStale(false);
-                                navigate("results");
-                              }}
+                              onClick={() => showRunResult(run)}
                             >
                               查看結果
                             </button>
                             <button className="button secondary" type="button" onClick={() => applyRunSettings(run)}>
                               套用條件
                             </button>
+                            {!run.isSaved && (
+                              <button className="button secondary" type="button" onClick={() => saveRunPermanently(run)}>
+                                儲存
+                              </button>
+                            )}
+                            {run.isSaved && (
+                              <button className="button secondary" type="button" onClick={() => renameRun(run)}>
+                                重新命名
+                              </button>
+                            )}
                             <button className="button ghost" type="button" onClick={() => deleteRun(run.id)}>
                               刪除
                             </button>
@@ -2808,10 +3153,12 @@ export default function Home() {
                       ))}
                     </div>
                   ) : (
-                    <div className="card empty-state">
+                    !historyLoading && (
+                      <div className="card empty-state">
                       <h2 className="panel-title">尚無歷史紀錄</h2>
-                      <p className="subtle">登入狀態下完成建立後，這裡會自動保存投資組合。</p>
+                      <p className="subtle">{historyMode === "recent" ? "目前沒有近期產生的投資組合。" : "目前尚未永久儲存任何投資組合。"}</p>
                     </div>
+                    )
                   )}
                   <div className="pagination-row">
                     <button className="button secondary" type="button" disabled={historyPage === 1} onClick={() => setHistoryPage((current) => Math.max(1, current - 1))}>
