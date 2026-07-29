@@ -1,6 +1,12 @@
-import { getCurrentUser } from "../../_lib/auth";
+import { ensureDatabaseSchema, getCurrentUser } from "../../_lib/auth";
 
 export async function GET(request: Request) {
-  const user = await getCurrentUser(request);
-  return Response.json({ user });
+  try {
+    await ensureDatabaseSchema();
+    const user = await getCurrentUser(request);
+    return Response.json({ user });
+  } catch (error) {
+    console.error("Load current user failed", error);
+    return Response.json({ user: null });
+  }
 }

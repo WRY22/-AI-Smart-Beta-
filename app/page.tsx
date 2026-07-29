@@ -131,45 +131,99 @@ type PortfolioRun = {
 type HomeCategoryKey = "popular" | "overall" | "momentum" | "stable";
 type AccountTab = "profile" | "history" | "candidates";
 
-const factorMeta: Record<FactorKey, { label: string; shortLabel: string; help: string }> = {
+const factorMeta: Record<
+  FactorKey,
+  {
+    label: string;
+    code: string;
+    shortLabel: string;
+    help: string;
+    highMeaning: string;
+    lowMeaning: string;
+    weightImpact: string;
+    risk: string;
+  }
+> = {
   beta: {
-    label: "市場敏感因子",
-    shortLabel: "Beta",
-    help: "衡量股票對整體市場波動的敏感度。分數較高代表股票較容易跟隨市場上漲或下跌；提高此因子權重後，積極偏好會更接受高市場曝險，保守偏好則會降低高 Beta 股票分數。",
+    label: "市場敏感度",
+    code: "Beta",
+    shortLabel: "市場敏感度",
+    help: "用來觀察股票對整體市場波動的敏感程度。",
+    highMeaning: "數值偏高通常代表股票較容易跟隨大盤大幅波動。",
+    lowMeaning: "數值偏低通常代表股票受大盤波動影響較小。",
+    weightImpact: "提高此因子權重後，積極偏好會更接受高市場敏感度股票；保守偏好會偏向較不受市場劇烈影響的股票。",
+    risk: "市場敏感度高不代表一定較好，行情反轉時波動也可能放大。",
   },
   smb: {
-    label: "規模因子",
-    shortLabel: "SMB",
-    help: "衡量大型股與小型股風格。依目前程式邏輯，SMB 分數較高代表較偏小型股；保守偏好會反向計分、較偏好大型股特性。提高此因子權重後，系統會更重視規模風格對排序的影響。",
+    label: "公司規模傾向",
+    code: "SMB",
+    shortLabel: "公司規模",
+    help: "用來觀察股票較偏向小型公司還是大型公司。",
+    highMeaning: "依目前程式方向，數值偏高通常表示較偏向小型股。",
+    lowMeaning: "數值偏低通常表示較偏向大型股；保守偏好會反向計分，較偏好大型股特性。",
+    weightImpact: "提高此因子權重後，系統會更重視公司規模風格對排序的影響。",
+    risk: "小型股可能有較高成長空間，但價格波動與流動性風險通常也較高。",
   },
   rmw: {
-    label: "獲利因子",
-    shortLabel: "RMW",
-    help: "衡量公司的獲利能力、財務穩健度及營運品質。分數較高通常代表公司獲利狀況、資本使用效率或財務結構相對穩健；提高此因子權重後，系統會更重視基本面品質較佳的公司。",
+    label: "獲利品質",
+    code: "RMW",
+    shortLabel: "獲利品質",
+    help: "用來比較公司的獲利能力與營運品質。",
+    highMeaning: "數值偏高通常表示公司的獲利能力較穩健。",
+    lowMeaning: "數值偏低可能代表獲利能力相對較弱。",
+    weightImpact: "提高此因子權重後，系統會更偏好獲利能力與公司體質較佳的股票。",
+    risk: "獲利品質是歷史資料估計，仍可能受到景氣循環、產業變化與一次性損益影響。",
   },
   cma: {
-    label: "投資風格因子",
-    shortLabel: "CMA",
-    help: "衡量公司投資行為偏保守或偏積極擴張。分數較高通常代表投資配置較保守穩健；提高此因子權重後，系統會更偏好投資紀律較明確、擴張節奏較穩的股票。",
+    label: "投資風格",
+    code: "CMA",
+    shortLabel: "投資風格",
+    help: "用來觀察公司的投資與擴張方式。",
+    highMeaning: "數值偏高通常較偏向保守投資。",
+    lowMeaning: "數值偏低可能代表公司正在積極投資或擴張。",
+    weightImpact: "提高此因子權重後，系統會更偏好投資紀律較明確、擴張節奏較穩的股票。",
+    risk: "積極擴張可能帶來成長，也可能增加經營與資金配置風險。",
   },
   hmlo: {
-    label: "價值因子",
-    shortLabel: "HML_o",
-    help: "衡量股票價格相對公司基本面是否偏低。價值因子分數較高，通常表示股票相對營收、獲利、淨資產或其他基本面指標可能較便宜；提高此因子權重後，系統會更偏好估值相對較低的股票。",
+    label: "價值程度",
+    code: "HML",
+    shortLabel: "價值程度",
+    help: "用來觀察股票較偏向價值型還是成長型。",
+    highMeaning: "數值偏高通常較偏向價格相對基本面較低的價值型股票。",
+    lowMeaning: "數值偏低可能較偏向成長型股票。",
+    weightImpact: "提高此因子權重後，系統會更偏好價格相對基本面較有吸引力的股票。",
+    risk: "價值型股票可能需要較長時間等待市場重新評價，也可能是基本面轉弱造成便宜。",
   },
   momentum: {
-    label: "動能因子",
-    shortLabel: "Momentum",
-    help: "衡量股票近期價格趨勢與相對強弱。分數較高通常代表股票近期走勢相對強勢；提高此因子權重後，系統會更偏好近期具有上漲趨勢的股票，但也可能承受趨勢反轉風險。",
+    label: "近期走勢",
+    code: "動能",
+    shortLabel: "近期走勢",
+    help: "用來觀察股票近期表現是否相對強勢。",
+    highMeaning: "數值較高通常代表近期走勢較強。",
+    lowMeaning: "數值較低通常代表近期走勢相對落後。",
+    weightImpact: "提高此因子權重後，系統會更偏好近期表現強勢的股票。",
+    risk: "近期上漲不代表未來一定會繼續上漲，趨勢反轉時風險可能增加。",
   },
   volatility: {
-    label: "低波動因子",
-    shortLabel: "Volatility",
-    help: "衡量股票價格波動程度。建立投資組合時沿用原本反向計分，低波動分數較高通常代表過去價格變動相對穩定；提高此因子權重後，系統會更偏好波動較小、風險相對較低的股票。",
+    label: "價格穩定度",
+    code: "低波動",
+    shortLabel: "價格穩定度",
+    help: "用來觀察股票價格過去的波動程度。",
+    highMeaning: "原始波動百分位越高代表過去價格波動越大；建立投資組合時沿用原本反向計分，會偏好較穩定的股票。",
+    lowMeaning: "原始波動百分位較低通常代表過去價格變動較穩定。",
+    weightImpact: "提高此因子權重後，系統會更偏好價格波動較小、風險相對較低的股票。",
+    risk: "低波動不等於沒有風險，市場急跌或公司事件仍可能造成明顯下跌。",
   },
 };
 
 const factorKeys: FactorKey[] = ["beta", "smb", "rmw", "cma", "hmlo", "momentum", "volatility"];
+
+const factorHelpText = (factor: FactorKey) => {
+  const meta = factorMeta[factor];
+  return `${meta.help}${meta.highMeaning}${meta.lowMeaning}${meta.weightImpact}${meta.risk} 對應研究因子：${meta.code}。`;
+};
+
+const factorDisplayName = (factor: FactorKey) => `${factorMeta[factor].label}（${factorMeta[factor].code}）`;
 
 const candidateOnlyHelp = {
   title: "僅使用候選股票",
@@ -562,21 +616,21 @@ const presets: Record<Exclude<PortfolioType, "自訂型">, Record<FactorKey, num
 
 const portfolioDescriptions: Record<PortfolioType, string> = {
   均衡型:
-    "適合希望風險與報酬較平均的投資者。風險程度中等，選股方向分散於品質、投資風格、價值、動能與低波動，RMW 權重最高。",
+    "適合希望風險與報酬較平均的投資者。風險程度中等，選股方向分散於獲利品質、投資風格、價值程度、近期走勢與價格穩定度，其中較重視公司的獲利品質。",
   穩健低波動型:
-    "適合重視本金波動控制與防守性的投資者。風險程度偏低，主要挑選低波動、品質佳且投資行為較保守的股票，較重視低波動、RMW 與 CMA。",
+    "適合重視本金波動控制與防守性的投資者。風險程度偏低，主要挑選價格較穩定、獲利品質佳且投資方式較保守的股票。",
   品質成長型:
-    "適合可接受中高波動、希望捕捉基本面品質與趨勢延續的投資者。風險程度中高，主要選股方向為高獲利能力與強動能，較重視 RMW 與 Momentum。",
+    "適合可接受中高波動、希望捕捉基本面品質與趨勢延續的投資者。風險程度中高，主要選股方向為獲利品質佳且近期走勢強的股票。",
   價值型:
-    "適合偏好價格相對基本面具吸引力、可承受等待修復時間的投資者。風險程度中等，主要選股方向為價值風格清楚且品質不弱的股票，最重視 HML_o。",
+    "適合偏好價格相對基本面具吸引力、可承受等待修復時間的投資者。風險程度中等，主要選股方向為價值程度清楚且公司體質不弱的股票。",
   動能型:
-    "適合能承受趨勢反轉風險、偏好近期強勢標的的投資者。風險程度偏高，主要選股方向為價格動能明顯的股票，最重視 Momentum。",
+    "適合能承受趨勢反轉風險、偏好近期強勢標的的投資者。風險程度偏高，主要選股方向為近期走勢明顯強於同市場股票的標的。",
   小型股風格:
-    "適合願意承擔規模與流動性風險、尋找小型股風格曝險的投資者。風險程度偏高，主要選股方向為 SMB 百分位較高且品質尚可的股票。",
+    "適合願意承擔規模與流動性風險、尋找小型公司風格曝險的投資者。風險程度偏高，主要選股方向為較偏向小型公司且獲利品質尚可的股票。",
   大型股穩健型:
-    "適合偏好成熟大型股、品質與投資紀律的投資者。風險程度偏低至中等，主要選股方向為大型股特性、RMW、CMA 與低波動表現較佳的股票。",
+    "適合偏好成熟大型股、品質與投資紀律的投資者。風險程度偏低至中等，主要選股方向為大型公司特性、獲利品質、投資風格與價格穩定度表現較佳的股票。",
   自訂型:
-    "適合希望自行調整選股條件的使用者。您可以自由設定各項因子的權重，系統將依照您的偏好進行股票評分與投資組合篩選。",
+    "適合希望自行決定選股標準的使用者。您可以調整每項條件的重要程度，系統會依照您的設定為股票評分並建立投資組合。",
 };
 
 const initialSettings: PortfolioSettings = {
@@ -734,19 +788,19 @@ function calculateScore(stock: Stock, settings: PortfolioSettings) {
 
 function reasonsFor(stock: Stock) {
   const reasons = [];
-  if (stock.rmw_percentile >= 75) reasons.push(`獲利因子百分位 ${stock.rmw_percentile}，品質因子相對突出`);
-  if (stock.momentum_percentile >= 75) reasons.push(`動能因子百分位 ${stock.momentum_percentile}，近期動能明顯`);
-  if (stock.hmlo_percentile >= 75) reasons.push(`價值因子百分位 ${stock.hmlo_percentile}，價值風格清楚`);
-  if (stock.volatility_percentile <= 35) reasons.push(`低波動因子百分位 ${stock.volatility_percentile}，歷史波動相對低`);
+  if (stock.rmw_percentile >= 75) reasons.push(`獲利品質百分位：${stock.rmw_percentile}，公司體質相對突出`);
+  if (stock.momentum_percentile >= 75) reasons.push(`近期走勢百分位：${stock.momentum_percentile}，近期表現相對強勢`);
+  if (stock.hmlo_percentile >= 75) reasons.push(`價值程度百分位：${stock.hmlo_percentile}，價值型特徵清楚`);
+  if (stock.volatility_percentile <= 35) reasons.push(`價格穩定度百分位：${100 - stock.volatility_percentile}，歷史波動相對低`);
   if (!reasons.length) reasons.push("綜合因子表現符合目前篩選條件");
   return reasons.slice(0, 3);
 }
 
 function riskReasonsFor(stock: Stock) {
   const risks = [];
-  if (stock.fatal_flag) risks.push("觸發 SMB > 0、RMW < 0、CMA < 0 致命組合");
-  if (stock.volatility_percentile >= 75) risks.push("歷史波動度位於市場較高區間");
-  if (stock.beta_percentile >= 80) risks.push("Beta 曝險偏高，對市場波動較敏感");
+  if (stock.fatal_flag) risks.push("這檔股票同時呈現較偏小型股、獲利能力較弱及積極擴張的特徵，整體風險可能較高。");
+  if (stock.volatility_percentile >= 75) risks.push("歷史價格波動位於市場較高區間。");
+  if (stock.beta_percentile >= 80) risks.push("市場敏感度偏高，對大盤波動較敏感。");
   if (stock.regression_fit_quality === "弱") risks.push("迴歸配適品質較弱，解讀需保守");
   if (!risks.length) risks.push("未觸發主要風險規則，仍需留意模型限制");
   return risks;
@@ -755,7 +809,7 @@ function riskReasonsFor(stock: Stock) {
 function exclusionReason(stock: Stock, settings: PortfolioSettings) {
   if (stock.data_quality_flag !== "通過") return "資料品質標記為注意，無法納入本次因子評分。";
   if (stock.overall_star < settings.minOverallStar) return `綜合星等低於 ${settings.minOverallStar} 星門檻。`;
-  if (settings.excludeFatal && stock.fatal_flag) return "已勾選排除致命組合，該股票觸發致命組合。";
+  if (settings.excludeFatal && stock.fatal_flag) return "已勾選排除高風險組合提醒，該股票符合高風險組合條件。";
   if (settings.riskPreference === "conservative" && stock.risk_level === "高") return "保守風險偏好會排除高風險股票。";
   return "";
 }
@@ -873,12 +927,23 @@ function StockCard({
   onDetail,
   onCandidate,
   isCandidate,
+  activeInfoId,
+  setActiveInfoId,
 }: {
   stock: Stock;
   onDetail: () => void;
   onCandidate: () => void;
   isCandidate: boolean;
+  activeInfoId: string | null;
+  setActiveInfoId: (id: string | null) => void;
 }) {
+  const highlightFactors = [
+    stock.rmw_percentile >= 75 ? "rmw" : null,
+    stock.momentum_percentile >= 75 ? "momentum" : null,
+    stock.hmlo_percentile >= 75 ? "hmlo" : null,
+    stock.volatility_percentile <= 35 ? "volatility" : null,
+  ].filter((factor): factor is FactorKey => Boolean(factor));
+
   return (
     <article className="card stock-card">
       <div className="row" style={{ justifyContent: "space-between" }}>
@@ -893,12 +958,23 @@ function StockCard({
         </span>
       </div>
       <div className="tag-row">
-        {reasonsFor(stock).slice(0, 2).map((reason) => (
-          <span className="tag" key={reason}>
-            {reason.split("，")[0]}
+        {highlightFactors.slice(0, 2).map((factor) => (
+          <span className="tag info-tag" key={factor}>
+            {factor === "volatility"
+              ? `${factorMeta[factor].label}分數：${100 - stock.volatility_percentile}／100`
+              : `${factorMeta[factor].label}百分位：${stock[`${factor}_percentile` as keyof Stock]}`
+            }
+            <InfoButton
+              id={`card-${stock.stock_id}-${factor}-info`}
+              title={factorDisplayName(factor)}
+              body={factorHelpText(factor)}
+              activeInfoId={activeInfoId}
+              setActiveInfoId={setActiveInfoId}
+              ariaLabel={`查看${factorMeta[factor].label}說明`}
+            />
           </span>
         ))}
-        {stock.fatal_flag && <span className="tag risk">致命組合警示</span>}
+        {stock.fatal_flag && <span className="tag risk">高風險組合提醒</span>}
       </div>
       <p className="subtle">{riskReasonsFor(stock)[0]}</p>
       <div className="row">
@@ -999,7 +1075,17 @@ function InfoButton({
   );
 }
 
-function FactorCard({ stock, factor }: { stock: Stock; factor: FactorKey }) {
+function FactorCard({
+  stock,
+  factor,
+  activeInfoId,
+  setActiveInfoId,
+}: {
+  stock: Stock;
+  factor: FactorKey;
+  activeInfoId: string | null;
+  setActiveInfoId: (id: string | null) => void;
+}) {
   const percentile = stock[`${factor}_percentile` as keyof Stock] as number;
   const exposureKey = factor === "momentum" ? "momentum_value" : factor === "volatility" ? "volatility_value" : `${factor}_exposure`;
   const exposure = stock[exposureKey as keyof Stock] as number;
@@ -1019,7 +1105,17 @@ function FactorCard({ stock, factor }: { stock: Stock; factor: FactorKey }) {
   return (
     <article className="card factor-card">
       <div className="row" style={{ justifyContent: "space-between" }}>
-        <strong title={factorMeta[factor].help}>{factorMeta[factor].label}</strong>
+        <span className="factor-name">
+          <strong>{factorDisplayName(factor)}</strong>
+          <InfoButton
+            id={`detail-${stock.stock_id}-${factor}-info`}
+            title={factorDisplayName(factor)}
+            body={factorHelpText(factor)}
+            activeInfoId={activeInfoId}
+            setActiveInfoId={setActiveInfoId}
+            ariaLabel={`查看${factorMeta[factor].label}說明`}
+          />
+        </span>
         <span className="stars">{starText(star)}</span>
       </div>
       <div className="meter" aria-label={`${factorMeta[factor].label} 百分位 ${percentile}`}>
@@ -1041,6 +1137,62 @@ const riskPreferenceLabel: Record<RiskPreference, string> = {
   aggressive: "積極",
 };
 
+function passwordRuleStatus(password: string) {
+  return [
+    { id: "length", label: "至少 8 個字元", valid: password.length >= 8 },
+    { id: "letter", label: "至少包含 1 個英文字母", valid: /[A-Za-z]/.test(password) },
+    { id: "number", label: "至少包含 1 個數字", valid: /[0-9]/.test(password) },
+    { id: "notBlank", label: "不可只由空白組成", valid: password.trim().length > 0 },
+  ];
+}
+
+function isValidEmailText(email: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+}
+
+function PasswordField({
+  id,
+  label,
+  value,
+  onChange,
+  visible,
+  onToggle,
+  describedBy,
+}: {
+  id: string;
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  visible: boolean;
+  onToggle: () => void;
+  describedBy?: string;
+}) {
+  return (
+    <label className="label password-label" htmlFor={id}>
+      {label}
+      <span className="password-field">
+        <input
+          id={id}
+          className="field password-input"
+          type={visible ? "text" : "password"}
+          value={value}
+          aria-describedby={describedBy}
+          onChange={(event) => onChange(event.target.value)}
+        />
+        <button
+          className="password-toggle"
+          type="button"
+          aria-label={visible ? "隱藏密碼" : "顯示密碼"}
+          aria-pressed={visible}
+          onClick={onToggle}
+        >
+          <span aria-hidden="true">{visible ? "◉" : "◌"}</span>
+        </button>
+      </span>
+    </label>
+  );
+}
+
 export default function Home() {
   const [view, setView] = useState<View>("home");
   const [query, setQuery] = useState("");
@@ -1061,6 +1213,11 @@ export default function Home() {
   const [authMessage, setAuthMessage] = useState("");
   const [loginForm, setLoginForm] = useState({ email: "", password: "" });
   const [registerForm, setRegisterForm] = useState({ displayName: "", email: "", password: "", confirmPassword: "" });
+  const [passwordVisibility, setPasswordVisibility] = useState({
+    login: false,
+    register: false,
+    registerConfirm: false,
+  });
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [homeCategory, setHomeCategory] = useState<HomeCategoryKey>("popular");
   const [homePage, setHomePage] = useState(1);
@@ -1074,6 +1231,7 @@ export default function Home() {
   const [historyItems, setHistoryItems] = useState<PortfolioRun[]>([]);
   const [historyPage, setHistoryPage] = useState(1);
   const [historyTotalPages, setHistoryTotalPages] = useState(1);
+  const builderContentRef = useRef<HTMLElement | null>(null);
 
   const selectedStock = stocks.find((stock) => stock.stock_id === selectedId) || stocks[0];
   const industries = ["全部", ...Array.from(new Set(stocks.map((stock) => stock.industry)))];
@@ -1141,6 +1299,15 @@ export default function Home() {
       ? activeResult.eligibleCandidateCount
       : stocks.filter((stock) => !exclusionReason(stock, settings)).length
     : 0;
+  const registerPasswordRules = passwordRuleStatus(registerForm.password);
+  const registerPasswordValid = registerPasswordRules.every((rule) => rule.valid);
+  const registerConfirmReady = registerForm.confirmPassword.length > 0;
+  const registerConfirmValid = registerConfirmReady && registerForm.password === registerForm.confirmPassword;
+  const registerFormValid =
+    Boolean(registerForm.displayName.trim()) &&
+    isValidEmailText(registerForm.email) &&
+    registerPasswordValid &&
+    registerConfirmValid;
 
   useEffect(() => {
     queueMicrotask(() => {
@@ -1286,6 +1453,10 @@ export default function Home() {
 
   const register = async () => {
     setAuthMessage("");
+    if (!registerFormValid) {
+      setAuthMessage("請先確認必填欄位、密碼規則與確認密碼都已完成。");
+      return;
+    }
     const response = await fetch("/api/auth/register", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1394,30 +1565,41 @@ export default function Home() {
     return 0;
   };
 
+  const scrollToBuilderContent = () => {
+    window.setTimeout(() => {
+      builderContentRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 0);
+  };
+
   const goToStep = (nextStep: number) => {
     if (nextStep <= step || completedSteps.includes(nextStep - 1)) {
       setStep(nextStep);
       setWizardNotice("");
+      scrollToBuilderContent();
       return;
     }
     const blockedStep = firstInvalidStep();
     if (blockedStep && blockedStep < nextStep) {
       setStep(blockedStep);
       setWizardNotice(`請先完成第 ${blockedStep} 步：${stepErrors[blockedStep][0]}`);
+      scrollToBuilderContent();
       return;
     }
     setStep(nextStep);
+    scrollToBuilderContent();
   };
 
   const nextStep = () => {
     const errors = stepErrors[step];
     if (errors.length) {
-      setWizardNotice(errors[0]);
+      setWizardNotice(step === 2 ? `因子權重總和必須為 100%，目前為 ${weightSum(settings.factorWeights)}%。` : errors[0]);
+      scrollToBuilderContent();
       return;
     }
     setCompletedSteps((current) => Array.from(new Set([...current, step])));
     setWizardNotice("");
     setStep((current) => Math.min(4, current + 1));
+    scrollToBuilderContent();
   };
 
   const navigate = (next: View) => {
@@ -1631,6 +1813,8 @@ export default function Home() {
                     stock={stock}
                     isCandidate={candidateIds.includes(stock.stock_id)}
                     onCandidate={() => toggleCandidate(stock.stock_id)}
+                    activeInfoId={activeInfoId}
+                    setActiveInfoId={setActiveInfoId}
                     onDetail={() => {
                       setSelectedId(stock.stock_id);
                       navigate("detail");
@@ -1714,7 +1898,7 @@ export default function Home() {
               </label>
               <label className="row">
                 <input type="checkbox" checked={excludeFatal} onChange={(event) => setExcludeFatal(event.target.checked)} />
-                排除致命組合
+                排除高風險組合提醒
               </label>
             </aside>
             <section className="table-wrap">
@@ -1746,7 +1930,7 @@ export default function Home() {
                       <td>{stock.momentum_percentile}</td>
                       <td>{stock.volatility_percentile}</td>
                       <td>
-                        <span className={stock.fatal_flag ? "tag risk" : "tag"}>{stock.fatal_flag ? "致命組合" : stock.risk_level}</span>
+                        <span className={stock.fatal_flag ? "tag risk" : "tag"}>{stock.fatal_flag ? "高風險組合提醒" : stock.risk_level}</span>
                       </td>
                       <td>
                         <div className="row">
@@ -1796,12 +1980,12 @@ export default function Home() {
                 <div className="section-head">
                   <div>
                     <h2>市場與規模</h2>
-                    <p>Beta 與 SMB 用來理解市場敏感度與規模風格，不直接代表公司品質。</p>
+                    <p>市場敏感度與公司規模傾向用來理解股票受大盤影響及大型/小型股特性，不直接代表公司品質。</p>
                   </div>
                 </div>
                 <div className="grid two">
-                  <FactorCard stock={selectedStock} factor="beta" />
-                  <FactorCard stock={selectedStock} factor="smb" />
+                  <FactorCard stock={selectedStock} factor="beta" activeInfoId={activeInfoId} setActiveInfoId={setActiveInfoId} />
+                  <FactorCard stock={selectedStock} factor="smb" activeInfoId={activeInfoId} setActiveInfoId={setActiveInfoId} />
                 </div>
               </section>
               <section>
@@ -1809,8 +1993,8 @@ export default function Home() {
                   <h2>獲利與投資</h2>
                 </div>
                 <div className="grid two">
-                  <FactorCard stock={selectedStock} factor="rmw" />
-                  <FactorCard stock={selectedStock} factor="cma" />
+                  <FactorCard stock={selectedStock} factor="rmw" activeInfoId={activeInfoId} setActiveInfoId={setActiveInfoId} />
+                  <FactorCard stock={selectedStock} factor="cma" activeInfoId={activeInfoId} setActiveInfoId={setActiveInfoId} />
                 </div>
               </section>
               <section>
@@ -1818,8 +2002,8 @@ export default function Home() {
                   <h2>價值與動能</h2>
                 </div>
                 <div className="grid two">
-                  <FactorCard stock={selectedStock} factor="hmlo" />
-                  <FactorCard stock={selectedStock} factor="momentum" />
+                  <FactorCard stock={selectedStock} factor="hmlo" activeInfoId={activeInfoId} setActiveInfoId={setActiveInfoId} />
+                  <FactorCard stock={selectedStock} factor="momentum" activeInfoId={activeInfoId} setActiveInfoId={setActiveInfoId} />
                 </div>
               </section>
               <section>
@@ -1827,10 +2011,12 @@ export default function Home() {
                   <h2>風險狀態</h2>
                 </div>
                 <div className="grid two">
-                  <FactorCard stock={selectedStock} factor="volatility" />
+                  <FactorCard stock={selectedStock} factor="volatility" activeInfoId={activeInfoId} setActiveInfoId={setActiveInfoId} />
                   <article className="card">
-                    <strong>致命組合規則</strong>
-                    <p className="subtle">規則：SMB &gt; 0、RMW &lt; 0、CMA &lt; 0 同時成立。</p>
+                    <strong>高風險組合提醒</strong>
+                    <p className="subtle">
+                      這檔股票同時呈現較偏小型股、獲利能力較弱及積極擴張的特徵，整體風險可能較高。判斷條件：公司規模傾向 &gt; 0、獲利品質 &lt; 0、投資風格 &lt; 0。
+                    </p>
                     <span className={selectedStock.fatal_flag ? "tag risk" : "tag"}>
                       {selectedStock.fatal_flag ? "已觸發" : "未觸發"}
                     </span>
@@ -1901,7 +2087,7 @@ export default function Home() {
               </button>
             ))}
           </div>
-          <section className="step-panel">
+          <section className="step-panel" ref={builderContentRef}>
             {wizardNotice && <p className="warning-box">{wizardNotice}</p>}
             {step === 1 && (
               <div className="grid three">
@@ -1967,7 +2153,7 @@ export default function Home() {
                       checked={settings.excludeFatal}
                       onChange={(event) => updateSetting("excludeFatal", event.target.checked)}
                     />
-                    排除致命組合
+                    排除高風險組合提醒
                   </label>
                   <label className="row">
                     <input
@@ -2090,13 +2276,13 @@ export default function Home() {
                       {factorMeta[factor].label}
                       <InfoButton
                         id={`factor-${factor}-info`}
-                        title={factorMeta[factor].label}
-                        body={factorMeta[factor].help}
+                        title={factorDisplayName(factor)}
+                        body={factorHelpText(factor)}
                         activeInfoId={activeInfoId}
                         setActiveInfoId={setActiveInfoId}
                         ariaLabel={`查看${factorMeta[factor].label}說明`}
                       />
-                      <small>{factorMeta[factor].shortLabel}</small>
+                      <small>{factorMeta[factor].code}</small>
                     </span>
                     <input
                       type="range"
@@ -2180,8 +2366,23 @@ export default function Home() {
                   <p>股票數量：{settings.stockCount}</p>
                   <p>風險偏好：{riskPreferenceLabel[settings.riskPreference]}</p>
                   <p>配置方式：{settings.allocationMethod === "equal" ? "等額配置" : "依評分配置"}</p>
-                  <p>排除致命組合：{settings.excludeFatal ? "是" : "否"}</p>
+                  <p>排除高風險組合提醒：{settings.excludeFatal ? "是" : "否"}</p>
                   <p>股票池模式：{settings.candidateOnly ? `僅使用候選股票（${candidateIds.length} 檔）` : "完整股票池"}</p>
+                  <div className="factor-weight-list">
+                    {factorKeys.map((factor) => (
+                      <span className="info-tag" key={factor}>
+                        {factorMeta[factor].label}：{settings.factorWeights[factor]}%
+                        <InfoButton
+                          id={`confirm-${factor}-info`}
+                          title={factorDisplayName(factor)}
+                          body={factorHelpText(factor)}
+                          activeInfoId={activeInfoId}
+                          setActiveInfoId={setActiveInfoId}
+                          ariaLabel={`查看${factorMeta[factor].label}說明`}
+                        />
+                      </span>
+                    ))}
+                  </div>
                 </div>
                 <div className="card">
                   <h2 className="panel-title">可產生結果</h2>
@@ -2201,7 +2402,15 @@ export default function Home() {
               </div>
             )}
             <div className="row" style={{ marginTop: 18, justifyContent: "space-between" }}>
-              <button className="button secondary" disabled={step === 1} onClick={() => setStep((current) => Math.max(1, current - 1))}>
+              <button
+                className="button secondary"
+                disabled={step === 1}
+                onClick={() => {
+                  setStep((current) => Math.max(1, current - 1));
+                  setWizardNotice("");
+                  scrollToBuilderContent();
+                }}
+              >
                 上一步
               </button>
               <button className="button" disabled={step === 4} onClick={nextStep}>
@@ -2241,7 +2450,7 @@ export default function Home() {
               ))}
               {!activeResult.validationErrors.length && recommendations.length < settings.stockCount && (
                 <p className="warning-box">
-                  符合條件股票不足：目前僅 {recommendations.length} 支。可能原因包含最低星等、排除致命組合、保守風險偏好或產業上限過嚴。
+                  符合條件股票不足：目前僅 {recommendations.length} 支。可能原因包含最低星等、排除高風險組合提醒、保守風險偏好或產業上限過嚴。
                 </p>
               )}
               <section className="summary-strip">
@@ -2289,8 +2498,16 @@ export default function Home() {
                   <h2 className="panel-title">本次因子權重</h2>
                   <div className="factor-weight-list">
                     {factorKeys.map((factor) => (
-                      <span key={factor}>
+                      <span className="info-tag" key={factor}>
                         {factorMeta[factor].label}：{Number((activeResult.requestPayload.factorWeights[factor] * 100).toFixed(2))}%
+                        <InfoButton
+                          id={`result-weight-${factor}-info`}
+                          title={factorDisplayName(factor)}
+                          body={factorHelpText(factor)}
+                          activeInfoId={activeInfoId}
+                          setActiveInfoId={setActiveInfoId}
+                          ariaLabel={`查看${factorMeta[factor].label}說明`}
+                        />
                       </span>
                     ))}
                   </div>
@@ -2339,8 +2556,16 @@ export default function Home() {
                         <td>
                           <div className="factor-score-list">
                             {factorKeys.map((factor) => (
-                              <span key={factor}>
+                              <span className="info-tag" key={factor}>
                                 {factorMeta[factor].label} {item.factor_scores[factor]}
+                                <InfoButton
+                                  id={`result-row-${item.stock_id}-${factor}-info`}
+                                  title={factorDisplayName(factor)}
+                                  body={factorHelpText(factor)}
+                                  activeInfoId={activeInfoId}
+                                  setActiveInfoId={setActiveInfoId}
+                                  ariaLabel={`查看${factorMeta[factor].label}說明`}
+                                />
                               </span>
                             ))}
                           </div>
@@ -2390,15 +2615,14 @@ export default function Home() {
                 onChange={(event) => setLoginForm((current) => ({ ...current, email: event.target.value }))}
               />
             </label>
-            <label className="label">
-              密碼
-              <input
-                className="field"
-                type="password"
-                value={loginForm.password}
-                onChange={(event) => setLoginForm((current) => ({ ...current, password: event.target.value }))}
-              />
-            </label>
+            <PasswordField
+              id="login-password"
+              label="密碼"
+              value={loginForm.password}
+              visible={passwordVisibility.login}
+              onToggle={() => setPasswordVisibility((current) => ({ ...current, login: !current.login }))}
+              onChange={(value) => setLoginForm((current) => ({ ...current, password: value }))}
+            />
             {authMessage && <p className="warning-box">{authMessage}</p>}
             <button className="button" type="button" onClick={signIn}>
               登入
@@ -2432,26 +2656,44 @@ export default function Home() {
                 onChange={(event) => setRegisterForm((current) => ({ ...current, email: event.target.value }))}
               />
             </label>
-            <label className="label">
-              密碼
-              <input
-                className="field"
-                type="password"
-                value={registerForm.password}
-                onChange={(event) => setRegisterForm((current) => ({ ...current, password: event.target.value }))}
-              />
-            </label>
-            <label className="label">
-              確認密碼
-              <input
-                className="field"
-                type="password"
-                value={registerForm.confirmPassword}
-                onChange={(event) => setRegisterForm((current) => ({ ...current, confirmPassword: event.target.value }))}
-              />
-            </label>
+            <PasswordField
+              id="register-password"
+              label="密碼"
+              value={registerForm.password}
+              visible={passwordVisibility.register}
+              describedBy="register-password-rules"
+              onToggle={() => setPasswordVisibility((current) => ({ ...current, register: !current.register }))}
+              onChange={(value) => setRegisterForm((current) => ({ ...current, password: value }))}
+            />
+            <div id="register-password-rules" className="password-rules" aria-live="polite">
+              <strong>密碼須符合以下條件：</strong>
+              {registerPasswordRules.map((rule) => (
+                <span key={rule.id} className={rule.valid ? "valid" : registerForm.password ? "invalid" : ""}>
+                  {rule.valid ? "✓" : "○"} {rule.label}
+                </span>
+              ))}
+              <small>請勿使用與其他網站相同的密碼，也不要將密碼提供給他人。</small>
+            </div>
+            <PasswordField
+              id="register-confirm-password"
+              label="確認密碼"
+              value={registerForm.confirmPassword}
+              visible={passwordVisibility.registerConfirm}
+              describedBy="register-confirm-rule"
+              onToggle={() => setPasswordVisibility((current) => ({ ...current, registerConfirm: !current.registerConfirm }))}
+              onChange={(value) => setRegisterForm((current) => ({ ...current, confirmPassword: value }))}
+            />
+            <div id="register-confirm-rule" className="password-rules confirm-rule" aria-live="polite">
+              {registerConfirmReady ? (
+                <span className={registerConfirmValid ? "valid" : "invalid"}>
+                  {registerConfirmValid ? "✓ 兩次輸入的密碼一致" : "○ 兩次輸入的密碼不一致"}
+                </span>
+              ) : (
+                <span>請再次輸入相同密碼。</span>
+              )}
+            </div>
             {authMessage && <p className="warning-box">{authMessage}</p>}
-            <button className="button" type="button" onClick={register}>
+            <button className="button" type="button" disabled={!registerFormValid} onClick={register}>
               註冊並登入
             </button>
             <button className="button ghost" type="button" onClick={() => navigate("login")}>
@@ -2530,8 +2772,16 @@ export default function Home() {
                           </div>
                           <div className="factor-weight-list">
                             {factorKeys.map((factor) => (
-                              <span key={factor}>
+                              <span className="info-tag" key={factor}>
                                 {factorMeta[factor].label}：{run.factorWeights[factor]}%
+                                <InfoButton
+                                  id={`history-${run.id}-${factor}-info`}
+                                  title={factorDisplayName(factor)}
+                                  body={factorHelpText(factor)}
+                                  activeInfoId={activeInfoId}
+                                  setActiveInfoId={setActiveInfoId}
+                                  ariaLabel={`查看${factorMeta[factor].label}說明`}
+                                />
                               </span>
                             ))}
                           </div>
@@ -2600,6 +2850,8 @@ export default function Home() {
                           stock={stock}
                           isCandidate
                           onCandidate={() => toggleCandidate(stock.stock_id)}
+                          activeInfoId={activeInfoId}
+                          setActiveInfoId={setActiveInfoId}
                           onDetail={() => {
                             setSelectedId(stock.stock_id);
                             navigate("detail");
@@ -2633,9 +2885,9 @@ export default function Home() {
           </div>
           <div className="grid three">
             {[
-              ["確定性量化計算", "Rolling Regression、百分位、星等、致命組合、排名與配置由程式完成。"],
+              ["確定性量化計算", "Rolling Regression、百分位、星等、高風險組合提醒、排名與配置由程式完成。"],
               ["AI 解釋邊界", "AI 僅根據結構化 JSON 解釋，不創造新聞、財務資訊或報酬預測。"],
-              ["待產品決策", "TEJ 欄位授權、批次頻率、Beta 理想區間、資料不足門檻與上線資料庫規格需再決策。"],
+              ["待產品決策", "TEJ 欄位授權、批次頻率、市場敏感度理想區間、資料不足門檻與上線資料庫規格需再決策。"],
             ].map(([title, body]) => (
               <article className="card" key={title}>
                 <h2 className="panel-title">{title}</h2>

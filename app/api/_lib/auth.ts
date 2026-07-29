@@ -20,6 +20,58 @@ export function getDb() {
   return env.DB;
 }
 
+export async function ensureDatabaseSchema() {
+  const db = getDb();
+  await db.batch([
+    db.prepare(
+      `CREATE TABLE IF NOT EXISTS users (
+        id text PRIMARY KEY NOT NULL,
+        email text NOT NULL,
+        display_name text NOT NULL,
+        password_hash text NOT NULL,
+        created_at text NOT NULL,
+        updated_at text NOT NULL
+      )`,
+    ),
+    db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS users_email_unique ON users (email)"),
+    db.prepare(
+      `CREATE TABLE IF NOT EXISTS sessions (
+        id text PRIMARY KEY NOT NULL,
+        user_id text NOT NULL,
+        token_hash text NOT NULL,
+        created_at text NOT NULL,
+        expires_at text NOT NULL,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE cascade
+      )`,
+    ),
+    db.prepare(
+      `CREATE TABLE IF NOT EXISTS candidate_stocks (
+        id text PRIMARY KEY NOT NULL,
+        user_id text NOT NULL,
+        ticker text NOT NULL,
+        created_at text NOT NULL,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE cascade
+      )`,
+    ),
+    db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS candidate_user_ticker_unique ON candidate_stocks (user_id, ticker)"),
+    db.prepare(
+      `CREATE TABLE IF NOT EXISTS portfolio_runs (
+        id text PRIMARY KEY NOT NULL,
+        user_id text NOT NULL,
+        portfolio_type text NOT NULL,
+        conditions text NOT NULL,
+        factor_weights text NOT NULL,
+        allocation_settings text NOT NULL,
+        candidate_only integer NOT NULL,
+        candidate_tickers text NOT NULL,
+        result text NOT NULL,
+        created_at text NOT NULL,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE cascade
+      )`,
+    ),
+  ]);
+}
+
 export function nowIso() {
   return new Date().toISOString();
 }
@@ -39,6 +91,15 @@ export function isValidEmail(email: string) {
 
 export function isValidTicker(value: string) {
   return /^[0-9A-Z.-]{1,12}$/.test(value);
+}
+
+export function passwordRuleErrors(password: string) {
+  const errors: string[] = [];
+  if (password.trim().length === 0) errors.push("密碼不可只由空白組成。");
+  if (password.length < 8) errors.push("密碼至少需要 8 個字元。");
+  if (!/[A-Za-z]/.test(password)) errors.push("密碼至少需要包含 1 個英文字母。");
+  if (!/[0-9]/.test(password)) errors.push("密碼至少需要包含 1 個數字。");
+  return errors;
 }
 
 export async function hashPassword(password: string, salt = randomBase64(16)) {

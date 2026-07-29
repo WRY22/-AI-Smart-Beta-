@@ -43,6 +43,58 @@ button {
   cursor: pointer;
 }
 
+input[type="checkbox"],
+input[type="radio"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--brand);
+  cursor: pointer;
+}
+
+input[type="checkbox"] {
+  appearance: none;
+  display: inline-grid;
+  place-content: center;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  background: var(--surface);
+}
+
+input[type="checkbox"]::before {
+  content: "";
+  width: 9px;
+  height: 9px;
+  transform: scale(0);
+  clip-path: polygon(14% 44%, 0 65%, 42% 100%, 100% 20%, 80% 0, 38% 64%);
+  background: white;
+}
+
+input[type="checkbox"]:hover {
+  border-color: var(--brand);
+}
+
+input[type="checkbox"]:checked {
+  border-color: var(--brand);
+  background: var(--brand);
+}
+
+input[type="checkbox"]:checked::before {
+  transform: scale(1);
+}
+
+input[type="checkbox"]:focus-visible,
+input[type="radio"]:focus-visible,
+input[type="range"]:focus-visible {
+  outline: 2px solid rgba(18, 100, 82, 0.28);
+  outline-offset: 2px;
+}
+
+input[type="checkbox"]:disabled,
+input[type="radio"]:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 button:disabled {
   cursor: not-allowed;
   opacity: 0.45;
@@ -481,6 +533,21 @@ button:disabled {
   font-weight: 750;
 }
 
+.info-tag {
+  gap: 4px;
+  padding-right: 4px;
+}
+
+.info-tag .info-dot {
+  width: 28px;
+  height: 28px;
+}
+
+.info-tag .info-dot span {
+  width: 16px;
+  height: 16px;
+}
+
 .tag.warn {
   color: #714b08;
   background: #f7ecd4;
@@ -591,6 +658,9 @@ tbody tr:hover {
 }
 
 .stepper {
+  position: sticky;
+  top: 64px;
+  z-index: 40;
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 0;
@@ -598,6 +668,8 @@ tbody tr:hover {
   border: 1px solid var(--line);
   border-radius: 7px;
   overflow: hidden;
+  background: var(--surface);
+  box-shadow: 0 8px 18px rgba(20, 32, 27, 0.07);
 }
 
 .step-tab {
@@ -866,6 +938,78 @@ tbody tr:hover {
   white-space: nowrap;
 }
 
+.password-label {
+  gap: 7px;
+}
+
+.password-field {
+  position: relative;
+  display: block;
+}
+
+.password-input {
+  padding-right: 48px;
+}
+
+.password-toggle {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  transform: translateY(-50%);
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--brand-dark);
+  background: transparent;
+}
+
+.password-toggle:hover,
+.password-toggle:focus-visible {
+  background: var(--surface-muted);
+  border-color: var(--line);
+  outline: 2px solid rgba(18, 100, 82, 0.18);
+  outline-offset: 1px;
+}
+
+.password-rules {
+  display: grid;
+  gap: 5px;
+  margin-top: -4px;
+  padding: 11px 12px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--surface-muted);
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.password-rules strong {
+  color: var(--ink);
+}
+
+.password-rules span {
+  display: block;
+}
+
+.password-rules .valid {
+  color: var(--good);
+  font-weight: 750;
+}
+
+.password-rules .invalid {
+  color: var(--warn);
+  font-weight: 750;
+}
+
+.password-rules small {
+  color: var(--muted);
+  line-height: 1.5;
+}
+
 .empty-state {
   padding: 28px;
   text-align: center;
@@ -995,6 +1139,10 @@ tbody tr:hover {
   .weight-actions {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .stepper {
+    top: 164px;
+  }
 }
 
 @media (max-width: 560px) {
@@ -1022,6 +1170,7 @@ tbody tr:hover {
   }
 
   .stepper {
+    top: 196px;
     grid-template-columns: repeat(4, minmax(116px, 1fr));
     overflow-x: auto;
   }
