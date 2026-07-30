@@ -4,8 +4,10 @@ import test from "node:test";
 
 const pagePath = new URL("../app/page.tsx", import.meta.url);
 const authPath = new URL("../app/api/_lib/auth.ts", import.meta.url);
+const registerPath = new URL("../app/api/auth/register/route.ts", import.meta.url);
 const runsPath = new URL("../app/api/portfolio-runs/route.ts", import.meta.url);
 const migrationPath = new URL("../drizzle/0001_zippy_sandman.sql", import.meta.url);
+const vitePath = new URL("../vite.config.ts", import.meta.url);
 
 test("portfolio builder exposes the localized save flow", async () => {
   const page = await readFile(pagePath, "utf8");
@@ -21,10 +23,12 @@ test("portfolio builder exposes the localized save flow", async () => {
 });
 
 test("auth and portfolio persistence keep schema and cookies compatible", async () => {
-  const [auth, runs, migration] = await Promise.all([
+  const [auth, register, runs, migration, vite] = await Promise.all([
     readFile(authPath, "utf8"),
+    readFile(registerPath, "utf8"),
     readFile(runsPath, "utf8"),
     readFile(migrationPath, "utf8"),
+    readFile(vitePath, "utf8"),
   ]);
 
   assert.match(auth, /decodeURIComponent\(value\)/);
@@ -36,6 +40,9 @@ test("auth and portfolio persistence keep schema and cookies compatible", async 
   assert.match(runs, /isSaved/);
   assert.match(runs, /cleanupExpiredRuns/);
   assert.match(migration, /UPDATE `users` SET `username` = `id`/);
+  assert.match(register, /目前無法建立帳號。請稍後再試。/);
+  assert.doesNotMatch(register, /查看 Cloudflare Logs/);
+  assert.doesNotMatch(vite, /00000000-0000-4000-8000-000000000000/);
 });
 
 test("welcome layout and market center replace the floating candidate entry", async () => {
@@ -45,7 +52,11 @@ test("welcome layout and market center replace the floating candidate entry", as
   assert.match(page, /以訪客身分使用/);
   assert.match(page, /smartBetaEntered/);
   assert.match(page, /市場探索中心/);
-  assert.match(page, /目前樣本的因子概況/);
+  assert.match(page, /了解選股因子/);
+  assert.match(page, /查看因子介紹/);
+  assert.match(page, /查看候選股票/);
+  assert.match(page, /role="tablist" aria-label="市場探索分類"/);
+  assert.doesNotMatch(page, /可點擊/);
   assert.match(page, /openMarketDrawer\("candidates"\)/);
   assert.doesNotMatch(page, /candidate-fab/);
   assert.doesNotMatch(css, /candidate-fab/);

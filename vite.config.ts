@@ -3,12 +3,11 @@ import { defineConfig } from "vite";
 import hostingConfig from "./.openai/hosting.json";
 import { sites } from "./build/sites-vite-plugin";
 
-const SITE_CREATOR_PLACEHOLDER_DATABASE_ID =
-  "00000000-0000-4000-8000-000000000000";
+const DEFAULT_D1_DATABASE_ID = "10a7aee8-beb3-4419-9dd6-4e10e80389a9";
 
 const { d1, r2 } = hostingConfig;
 const d1DatabaseName = process.env.CLOUDFLARE_D1_DATABASE_NAME ?? "ai-smart-beta-db";
-const d1DatabaseId = process.env.CLOUDFLARE_D1_DATABASE_ID ?? SITE_CREATOR_PLACEHOLDER_DATABASE_ID;
+const d1DatabaseId = process.env.CLOUDFLARE_D1_DATABASE_ID ?? DEFAULT_D1_DATABASE_ID;
 
 // macOS Seatbelt blocks FSEvents, so Codex previews need polling for HMR.
 const isCodexSeatbeltSandbox = process.env.CODEX_SANDBOX === "seatbelt";
