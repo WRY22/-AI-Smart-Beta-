@@ -45,8 +45,7 @@ test("welcome layout and market center replace the floating candidate entry", as
   assert.match(page, /以訪客身分使用/);
   assert.match(page, /smartBetaEntered/);
   assert.match(page, /市場探索中心/);
-  assert.match(page, /掌握資料範圍、因子邏輯與候選清單/);
-  assert.doesNotMatch(page, /可點擊/);
+  assert.match(page, /目前樣本的因子概況/);
   assert.match(page, /openMarketDrawer\("candidates"\)/);
   assert.doesNotMatch(page, /candidate-fab/);
   assert.doesNotMatch(css, /candidate-fab/);
