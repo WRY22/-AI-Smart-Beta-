@@ -186,6 +186,61 @@ button:disabled {
   max-width: 100%;
 }
 
+.candidate-fab {
+  position: fixed;
+  right: clamp(16px, 3vw, 34px);
+  bottom: clamp(18px, 4vw, 34px);
+  z-index: 35;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 54px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  padding: 8px 16px 8px 10px;
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 14px 34px rgba(20, 32, 27, 0.16);
+  backdrop-filter: blur(14px);
+}
+
+.candidate-fab:hover,
+.candidate-fab:focus-visible {
+  border-color: var(--brand);
+  outline: none;
+  transform: translateY(-1px);
+}
+
+.candidate-fab.has-items {
+  border-color: rgba(18, 100, 82, 0.35);
+}
+
+.candidate-fab-icon {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+  color: white;
+  background: var(--brand-dark);
+  font-size: 15px;
+  font-weight: 900;
+}
+
+.candidate-fab span:last-child {
+  display: grid;
+  gap: 1px;
+  text-align: left;
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.candidate-fab small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 750;
+}
+
 .compact-button {
   min-height: 34px;
   padding: 7px 10px;
@@ -1153,7 +1208,7 @@ tbody tr:hover {
 
   .top-actions {
     order: 2;
-    width: 100%;
+    margin-left: auto;
   }
 
   .home-tools,
@@ -1164,6 +1219,18 @@ tbody tr:hover {
 
   .top-search {
     order: 4;
+  }
+
+  .candidate-fab {
+    right: 14px;
+    bottom: 14px;
+    min-height: 48px;
+    padding: 7px 12px 7px 8px;
+  }
+
+  .candidate-fab-icon {
+    width: 32px;
+    height: 32px;
   }
 
   .hero,

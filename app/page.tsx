@@ -1838,9 +1838,6 @@ export default function Home() {
           ))}
         </nav>
         <div className="top-actions">
-          <button className="button secondary compact-button" type="button" onClick={() => setDrawerOpen(true)}>
-            候選清單（{candidateIds.length}）
-          </button>
           {user ? (
             <>
               <button className={view === "account" ? "button compact-button" : "button secondary compact-button"} type="button" onClick={() => navigate("account")}>
@@ -1875,6 +1872,20 @@ export default function Home() {
           }}
         />
       </header>
+      <button
+        className={`candidate-fab ${candidateIds.length ? "has-items" : ""}`}
+        type="button"
+        onClick={() => setDrawerOpen(true)}
+        aria-label={`開啟候選清單，目前 ${candidateIds.length} 檔股票`}
+      >
+        <span className="candidate-fab-icon" aria-hidden="true">
+          ◎
+        </span>
+        <span>
+          候選清單
+          <small>{candidateIds.length} 檔</small>
+        </span>
+      </button>
       {drawerOpen && (
         <div className="drawer-layer" role="presentation" onPointerDown={() => setDrawerOpen(false)}>
           <aside className="candidate-drawer" role="dialog" aria-label="候選股票清單" onPointerDown={(event) => event.stopPropagation()}>

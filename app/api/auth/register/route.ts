@@ -57,6 +57,10 @@ export async function POST(request: Request) {
     );
   } catch (error) {
     console.error("Register failed", error);
+    const message = error instanceof Error ? error.message : "";
+    if (message.includes("資料庫尚未啟用") || message.includes("D1") || message.includes("DB")) {
+      return jsonError("目前資料庫尚未連線，請確認 Cloudflare 已綁定 D1 database：DB → ai-smart-beta-db。", 500);
+    }
     return jsonError("目前無法建立帳號，請稍後再試。", 500);
   }
 }
