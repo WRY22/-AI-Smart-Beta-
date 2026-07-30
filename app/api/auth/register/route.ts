@@ -57,10 +57,26 @@ export async function POST(request: Request) {
     );
   } catch (error) {
     console.error("Register failed", error);
-    const message = error instanceof Error ? error.message : "";
-    if (message.includes("資料庫尚未啟用") || message.includes("D1") || message.includes("DB")) {
-      return jsonError("目前資料庫尚未連線，請確認 Cloudflare 已綁定 D1 database：DB → ai-smart-beta-db。", 500);
-    }
-    return jsonError("目前無法建立帳號，請稍後再試。", 500);
+    return jsonError(`目前無法建立帳號：${registerFailureMessage(error)}`, 500);
   }
+}
+
+function registerFailureMessage(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  if (message.includes("資料庫尚未啟用") || message.includes("D1") || message.includes("env.DB")) {
+    return "資料庫尚未連線，請確認 Cloudflare 已綁定 D1 database：DB → ai-smart-beta-db。";
+  }
+  if (message.includes("no such table") || message.includes("no such column")) {
+    return "資料庫結構尚未建立完成，請確認 D1 database 可寫入，或重新部署後再試。";
+  }
+  if (message.includes("UNIQUE constraint failed: users.email")) {
+    return "這個電子郵件已經註冊。";
+  }
+  if (message.includes("UNIQUE constraint failed: users.username")) {
+    return "這個使用者名稱已經有人使用。";
+  }
+  if (message.includes("not found") || message.includes("database_id")) {
+    return "Cloudflare 找不到目前綁定的 D1 database，請確認 database id 與 DB binding。";
+  }
+  return "伺服器暫時無法寫入帳號資料，請稍後再試，或查看 Cloudflare Logs 的 Register failed 詳細錯誤。";
 }

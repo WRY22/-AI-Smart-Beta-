@@ -131,15 +131,11 @@ button:disabled {
 }
 
 .brand-mark {
-  display: grid;
-  place-items: center;
-  width: 32px;
-  height: 32px;
-  border-radius: 6px;
-  color: white;
-  background: var(--brand-dark);
-  font-size: 12px;
-  letter-spacing: 0;
+  display: block;
+  width: 42px;
+  height: 42px;
+  border-radius: 8px;
+  background: url("/smart-beta-logo.png") center / contain no-repeat;
 }
 
 .nav {
@@ -573,7 +569,8 @@ button:disabled {
 .tag-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  justify-content: flex-start;
+  gap: 8px;
 }
 
 .tag {
@@ -589,13 +586,23 @@ button:disabled {
 }
 
 .info-tag {
-  gap: 4px;
-  padding-right: 4px;
+  gap: 8px;
+  justify-content: space-between;
+  min-height: 38px;
+  border: 1px solid var(--line);
+  padding: 4px 5px 4px 14px;
+  background: #eaf3ef;
+  font-size: 14px;
+  line-height: 1;
 }
 
 .info-tag .info-dot {
-  width: 28px;
-  height: 28px;
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  margin-left: 2px;
+  border-color: var(--line);
+  background: rgba(255, 255, 255, 0.34);
 }
 
 .info-tag .info-dot span {
@@ -978,22 +985,23 @@ tbody tr:hover {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: center;
-  gap: 7px;
+  justify-content: flex-start;
+  gap: 9px;
 }
 
 .factor-weight-list span,
 .factor-score-list span {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  min-height: 34px;
+  justify-content: space-between;
+  min-height: 40px;
+  min-width: 148px;
   border: 1px solid var(--line);
   border-radius: 999px;
-  padding: 4px 8px;
+  padding: 5px 6px 5px 14px;
   color: #3f4c45;
-  background: var(--surface-muted);
-  font-size: 12px;
+  background: #eef5f2;
+  font-size: 14px;
   font-weight: 750;
   line-height: 1.2;
   white-space: nowrap;

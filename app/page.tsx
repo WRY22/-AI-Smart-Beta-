@@ -1821,7 +1821,7 @@ export default function Home() {
     <div className="app-shell">
       <header className="topbar">
         <div className="brand">
-          <span className="brand-mark">AI</span>
+          <span className="brand-mark" aria-hidden="true" />
           <span>AI x Smart Beta</span>
         </div>
         <nav className="nav" aria-label="主要導覽">
