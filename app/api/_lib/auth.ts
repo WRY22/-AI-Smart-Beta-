@@ -19,7 +19,7 @@ export type SessionRecord = {
 
 const SESSION_COOKIE = "smart_beta_session";
 const SESSION_DAYS = 14;
-const PASSWORD_ITERATIONS = 120000;
+const PASSWORD_ITERATIONS = 100000;
 
 export function jsonError(message: string, status = 400) {
   return Response.json({ error: message }, { status });
@@ -205,13 +205,15 @@ export async function hashPassword(password: string, salt = randomBase64(16)) {
 export async function verifyPassword(password: string, stored: string) {
   const [scheme, iterations, salt, hash] = stored.split("$");
   if (scheme !== "pbkdf2_sha256" || !iterations || !salt || !hash) return false;
+  const iterationCount = Number(iterations);
+  if (!Number.isSafeInteger(iterationCount) || iterationCount < 1 || iterationCount > PASSWORD_ITERATIONS) return false;
   const key = await crypto.subtle.importKey("raw", utf8(password), "PBKDF2", false, ["deriveBits"]);
   const bits = await crypto.subtle.deriveBits(
     {
       name: "PBKDF2",
       hash: "SHA-256",
       salt: base64ToBytes(salt),
-      iterations: Number(iterations),
+      iterations: iterationCount,
     },
     key,
     256,

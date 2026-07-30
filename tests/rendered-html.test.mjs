@@ -46,6 +46,8 @@ test("auth and portfolio persistence keep schema and cookies compatible", async 
   assert.match(register, /await db\.batch\(/);
   assert.doesNotMatch(register, /查看 Cloudflare Logs/);
   assert.match(auth, /sessions_token_hash_idx/);
+  assert.match(auth, /const PASSWORD_ITERATIONS = 100000/);
+  assert.match(auth, /iterationCount > PASSWORD_ITERATIONS/);
   assert.match(auth, /Priority=High/);
   assert.match(authSafetyMigration, /users_username_required_insert/);
   assert.match(authSafetyMigration, /sessions_token_hash_idx/);
