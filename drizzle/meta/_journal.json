@@ -22,6 +22,13 @@
       "when": 1785337168465,
       "tag": "0002_cheerful_northstar",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1785425283206,
+      "tag": "0003_auth_session_safety",
+      "breakpoints": true
     }
   ]
 }

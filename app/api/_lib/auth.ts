@@ -8,6 +8,15 @@ export type SessionUser = {
   createdAt: string;
 };
 
+export type SessionRecord = {
+  id: string;
+  userId: string;
+  token: string;
+  tokenHash: string;
+  createdAt: string;
+  expiresAt: string;
+};
+
 const SESSION_COOKIE = "smart_beta_session";
 const SESSION_DAYS = 14;
 const PASSWORD_ITERATIONS = 120000;
@@ -92,6 +101,26 @@ export async function ensureAuthSchema() {
   await db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS users_username_unique ON users (username)").run();
   await db
     .prepare(
+      `CREATE TRIGGER IF NOT EXISTS users_username_required_insert
+       BEFORE INSERT ON users
+       WHEN NEW.username IS NULL OR trim(NEW.username) = ''
+       BEGIN
+         SELECT RAISE(ABORT, 'username_required');
+       END`,
+    )
+    .run();
+  await db
+    .prepare(
+      `CREATE TRIGGER IF NOT EXISTS users_username_required_update
+       BEFORE UPDATE OF username ON users
+       WHEN NEW.username IS NULL OR trim(NEW.username) = ''
+       BEGIN
+         SELECT RAISE(ABORT, 'username_required');
+       END`,
+    )
+    .run();
+  await db
+    .prepare(
       `CREATE TABLE IF NOT EXISTS sessions (
         id text PRIMARY KEY NOT NULL,
         user_id text NOT NULL,
@@ -102,6 +131,7 @@ export async function ensureAuthSchema() {
       )`,
     )
     .run();
+  await db.prepare("CREATE INDEX IF NOT EXISTS sessions_token_hash_idx ON sessions (token_hash)").run();
 }
 
 export function nowIso() {
@@ -194,17 +224,22 @@ export async function hashToken(token: string) {
   return bytesToBase64(new Uint8Array(digest));
 }
 
-export async function createSession(userId: string) {
-  const db = getDb();
+export async function createSessionRecord(userId: string): Promise<SessionRecord> {
   const token = randomBase64(32);
   const tokenHash = await hashToken(token);
   const createdAt = nowIso();
   const expiresAt = new Date(Date.now() + SESSION_DAYS * 24 * 60 * 60 * 1000).toISOString();
+  return { id: createId("ses"), userId, token, tokenHash, createdAt, expiresAt };
+}
+
+export async function createSession(userId: string) {
+  const db = getDb();
+  const session = await createSessionRecord(userId);
   await db
     .prepare("INSERT INTO sessions (id, user_id, token_hash, created_at, expires_at) VALUES (?, ?, ?, ?, ?)")
-    .bind(createId("ses"), userId, tokenHash, createdAt, expiresAt)
+    .bind(session.id, session.userId, session.tokenHash, session.createdAt, session.expiresAt)
     .run();
-  return { token, expiresAt };
+  return { token: session.token, expiresAt: session.expiresAt };
 }
 
 function secureCookieSuffix(requestUrl?: string) {
@@ -218,11 +253,11 @@ function secureCookieSuffix(requestUrl?: string) {
 
 export function sessionCookie(token: string, expiresAt: string, requestUrl?: string) {
   const maxAge = Math.max(0, Math.floor((new Date(expiresAt).getTime() - Date.now()) / 1000));
-  return `${SESSION_COOKIE}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge};${secureCookieSuffix(requestUrl)} Expires=${new Date(expiresAt).toUTCString()}`;
+  return `${SESSION_COOKIE}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Priority=High; Max-Age=${maxAge};${secureCookieSuffix(requestUrl)} Expires=${new Date(expiresAt).toUTCString()}`;
 }
 
 export function clearSessionCookie(requestUrl?: string) {
-  return `${SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax;${secureCookieSuffix(requestUrl)} Max-Age=0`;
+  return `${SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Priority=High;${secureCookieSuffix(requestUrl)} Max-Age=0`;
 }
 
 export async function getCurrentUser(request: Request): Promise<SessionUser | null> {

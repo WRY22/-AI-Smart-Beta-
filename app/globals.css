@@ -18,6 +18,10 @@
   --warn: #f3b24b;
   --risk: #ff7789;
   --good: #4ade9d;
+  --tag-bg: #153128;
+  --tag-border: #2e5c4d;
+  --row-hover: #162a24;
+  --row-selected: #1c382f;
   --shadow: 0 18px 48px rgba(0, 0, 0, 0.28);
 }
 
@@ -539,7 +543,7 @@ button:disabled {
 .factor-bar:hover,
 .factor-bar:focus-visible {
   border-color: var(--line-strong);
-  background: rgba(255, 255, 255, 0.56);
+  background: var(--row-hover);
   outline: none;
 }
 
@@ -550,7 +554,7 @@ button:disabled {
   width: 16px;
   min-height: 72px;
   border-radius: 999px;
-  background: #dce7e2;
+  background: var(--surface-strong);
   overflow: hidden;
 }
 
@@ -600,7 +604,7 @@ button:disabled {
 .market-actions button:hover,
 .market-actions button:focus-visible {
   border-color: var(--brand);
-  background: #f1f8f5;
+  background: var(--row-hover);
   outline: none;
 }
 
@@ -862,29 +866,34 @@ button:disabled {
 }
 
 .info-tag {
-  display: inline-grid;
-  grid-template-columns: minmax(0, max-content) 30px;
+  display: inline-flex;
   align-items: center;
   justify-content: start;
-  gap: 10px;
-  min-height: 38px;
-  border: 1px solid var(--line);
+  flex-shrink: 0;
+  gap: 8px;
+  min-height: 42px;
+  border: 1px solid var(--tag-border);
   border-radius: 999px;
-  padding: 4px 5px 4px 16px;
-  background: rgba(31, 193, 143, 0.1);
+  padding: 3px 4px 3px 14px;
+  background: var(--tag-bg);
   color: var(--ink);
   font-size: 14px;
-  line-height: 1;
+  font-weight: 750;
+  line-height: 1.25;
   white-space: nowrap;
+}
+
+.info-tag-label {
+  min-width: 0;
 }
 
 .info-tag .info-dot {
   flex: 0 0 auto;
-  width: 30px;
-  height: 30px;
-  margin-left: 2px;
-  border-color: var(--line);
-  background: rgba(255, 255, 255, 0.05);
+  width: 34px;
+  height: 34px;
+  margin-left: 0;
+  border-color: var(--tag-border);
+  background: rgba(7, 17, 15, 0.42);
 }
 
 .info-tag .info-dot span {
@@ -893,13 +902,13 @@ button:disabled {
 }
 
 .tag.warn {
-  color: #714b08;
-  background: #f7ecd4;
+  color: #ffd98e;
+  background: rgba(243, 178, 75, 0.14);
 }
 
 .tag.risk {
-  color: #7b303a;
-  background: #f5e5e8;
+  color: #ffb1bd;
+  background: rgba(255, 119, 137, 0.14);
 }
 
 .stars {
@@ -925,7 +934,7 @@ button:disabled {
 .label {
   display: grid;
   gap: 6px;
-  color: #536159;
+  color: var(--muted);
   font-size: 13px;
   font-weight: 750;
 }
@@ -955,7 +964,7 @@ th {
   position: sticky;
   top: 0;
   z-index: 1;
-  color: #526159;
+  color: var(--muted);
   background: var(--surface-muted);
   font-size: 12px;
   font-weight: 800;
@@ -963,7 +972,12 @@ th {
 }
 
 tbody tr:hover {
-  background: #f7faf8;
+  background: var(--row-hover);
+}
+
+tbody tr[aria-selected="true"],
+tbody tr.selected {
+  background: var(--row-selected);
 }
 
 .factor-layout {
@@ -982,7 +996,7 @@ tbody tr:hover {
   height: 7px;
   overflow: hidden;
   border-radius: 999px;
-  background: #e4eae6;
+  background: var(--surface-strong);
 }
 
 .meter span {
@@ -1276,24 +1290,21 @@ tbody tr:hover {
   gap: 10px;
 }
 
-.factor-weight-list > span,
-.factor-score-list > span {
-  display: inline-grid;
-  grid-template-columns: max-content 30px;
+.candidate-chip {
+  display: inline-flex;
   align-items: center;
   justify-content: start;
   min-height: 40px;
   min-width: 0;
-  border: 1px solid var(--line);
+  border: 1px solid var(--tag-border);
   border-radius: 999px;
-  padding: 5px 5px 5px 16px;
-  color: #3f4c45;
-  background: #eef5f2;
+  padding: 6px 14px;
+  color: var(--ink);
+  background: var(--tag-bg);
   font-size: 14px;
   font-weight: 750;
   line-height: 1.2;
   white-space: nowrap;
-  column-gap: 10px;
 }
 
 .save-panel {
@@ -1628,6 +1639,7 @@ tbody tr:hover {
     border-right: 1px solid var(--line);
     background: var(--surface);
     box-shadow: 18px 0 48px rgba(0, 0, 0, 0.34);
+    animation: mobile-nav-in 180ms ease-out both;
   }
 
   .mobile-nav-head {
@@ -1650,6 +1662,7 @@ tbody tr:hover {
   .mobile-nav button.active {
     color: var(--brand-dark);
     background: var(--surface-strong);
+    border-color: var(--brand);
     font-weight: 850;
   }
 
@@ -1693,6 +1706,28 @@ tbody tr:hover {
 
   .stepper {
     top: 68px;
+  }
+
+  .info-tag {
+    max-width: 100%;
+    min-height: 44px;
+    white-space: normal;
+  }
+
+  .info-tag .info-dot {
+    width: 36px;
+    height: 36px;
+  }
+}
+
+@keyframes mobile-nav-in {
+  from {
+    transform: translateX(-18px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
   }
 }
 

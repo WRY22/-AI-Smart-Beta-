@@ -1,6 +1,6 @@
 import {
   createId,
-  createSession,
+  createSessionRecord,
   ensureAuthSchema,
   getDb,
   hashPassword,
@@ -44,13 +44,18 @@ export async function POST(request: Request) {
 
     const userId = createId("usr");
     const createdAt = nowIso();
-    await db
-      .prepare(
+    const passwordHash = await hashPassword(password);
+    const session = await createSessionRecord(userId);
+    await db.batch([
+      db
+        .prepare(
         "INSERT INTO users (id, username, email, display_name, password_hash, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
       )
-      .bind(userId, username, email, displayName, await hashPassword(password), createdAt, createdAt)
-      .run();
-    const session = await createSession(userId);
+        .bind(userId, username, email, displayName, passwordHash, createdAt, createdAt),
+      db
+        .prepare("INSERT INTO sessions (id, user_id, token_hash, created_at, expires_at) VALUES (?, ?, ?, ?, ?)")
+        .bind(session.id, session.userId, session.tokenHash, session.createdAt, session.expiresAt),
+    ]);
     return Response.json(
       { user: { id: userId, username, email, displayName, createdAt } },
       { status: 201, headers: { "Set-Cookie": sessionCookie(session.token, session.expiresAt, request.url) } },

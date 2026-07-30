@@ -968,20 +968,17 @@ function StockCard({
       </div>
       <div className="tag-row">
         {highlightFactors.slice(0, 2).map((factor) => (
-          <span className="tag info-tag" key={factor}>
-            {factor === "volatility"
+          <InfoTag
+            key={factor}
+            id={`card-${stock.stock_id}-${factor}-info`}
+            factor={factor}
+            value={factor === "volatility"
               ? `${factorMeta[factor].label}分數：${100 - stock.volatility_percentile}／100`
               : `${factorMeta[factor].label}百分位：${stock[`${factor}_percentile` as keyof Stock]}`
             }
-            <InfoButton
-              id={`card-${stock.stock_id}-${factor}-info`}
-              title={factorDisplayName(factor)}
-              body={factorHelpText(factor)}
-              activeInfoId={activeInfoId}
-              setActiveInfoId={setActiveInfoId}
-              ariaLabel={`查看${factorMeta[factor].label}說明`}
-            />
-          </span>
+            activeInfoId={activeInfoId}
+            setActiveInfoId={setActiveInfoId}
+          />
         ))}
         {stock.fatal_flag && <span className="tag risk">高風險組合提醒</span>}
       </div>
@@ -1081,6 +1078,34 @@ function InfoButton({
           document.body,
         )}
     </>
+  );
+}
+
+function InfoTag({
+  id,
+  factor,
+  value,
+  activeInfoId,
+  setActiveInfoId,
+}: {
+  id: string;
+  factor: FactorKey;
+  value: string;
+  activeInfoId: string | null;
+  setActiveInfoId: (id: string | null) => void;
+}) {
+  return (
+    <span className="info-tag">
+      <span className="info-tag-label">{value}</span>
+      <InfoButton
+        id={id}
+        title={factorDisplayName(factor)}
+        body={factorHelpText(factor)}
+        activeInfoId={activeInfoId}
+        setActiveInfoId={setActiveInfoId}
+        ariaLabel={`查看${factorMeta[factor].label}說明`}
+      />
+    </span>
   );
 }
 
@@ -2691,7 +2716,7 @@ export default function Home() {
                   {candidateStocks.length > 0 && (
                     <div className="factor-weight-list" aria-label="目前候選股票清單">
                       {candidateStocks.map((stock) => (
-                        <span key={stock.stock_id}>
+                        <span className="candidate-chip" key={stock.stock_id}>
                           {stock.stock_id} {stock.stock_name}
                         </span>
                       ))}
@@ -2867,17 +2892,14 @@ export default function Home() {
                   <p>股票池模式：{settings.candidateOnly ? `僅使用候選股票（${candidateIds.length} 檔）` : "完整股票池"}</p>
                   <div className="factor-weight-list">
                     {factorKeys.map((factor) => (
-                      <span className="info-tag" key={factor}>
-                        {factorMeta[factor].label}：{settings.factorWeights[factor]}%
-                        <InfoButton
-                          id={`confirm-${factor}-info`}
-                          title={factorDisplayName(factor)}
-                          body={factorHelpText(factor)}
-                          activeInfoId={activeInfoId}
-                          setActiveInfoId={setActiveInfoId}
-                          ariaLabel={`查看${factorMeta[factor].label}說明`}
-                        />
-                      </span>
+                      <InfoTag
+                        key={factor}
+                        id={`confirm-${factor}-info`}
+                        factor={factor}
+                        value={`${factorMeta[factor].label}：${settings.factorWeights[factor]}%`}
+                        activeInfoId={activeInfoId}
+                        setActiveInfoId={setActiveInfoId}
+                      />
                     ))}
                   </div>
                 </div>
@@ -3077,17 +3099,14 @@ export default function Home() {
                   <h2 className="panel-title">本次因子權重</h2>
                   <div className="factor-weight-list">
                     {factorKeys.map((factor) => (
-                      <span className="info-tag" key={factor}>
-                        {factorMeta[factor].label}：{Number((activeResult.requestPayload.factorWeights[factor] * 100).toFixed(2))}%
-                        <InfoButton
-                          id={`result-weight-${factor}-info`}
-                          title={factorDisplayName(factor)}
-                          body={factorHelpText(factor)}
-                          activeInfoId={activeInfoId}
-                          setActiveInfoId={setActiveInfoId}
-                          ariaLabel={`查看${factorMeta[factor].label}說明`}
-                        />
-                      </span>
+                      <InfoTag
+                        key={factor}
+                        id={`result-weight-${factor}-info`}
+                        factor={factor}
+                        value={`${factorMeta[factor].label}：${Number((activeResult.requestPayload.factorWeights[factor] * 100).toFixed(2))}%`}
+                        activeInfoId={activeInfoId}
+                        setActiveInfoId={setActiveInfoId}
+                      />
                     ))}
                   </div>
                 </div>
@@ -3135,17 +3154,14 @@ export default function Home() {
                         <td>
                           <div className="factor-score-list">
                             {factorKeys.map((factor) => (
-                              <span className="info-tag" key={factor}>
-                                {factorMeta[factor].label} {item.factor_scores[factor]}
-                                <InfoButton
-                                  id={`result-row-${item.stock_id}-${factor}-info`}
-                                  title={factorDisplayName(factor)}
-                                  body={factorHelpText(factor)}
-                                  activeInfoId={activeInfoId}
-                                  setActiveInfoId={setActiveInfoId}
-                                  ariaLabel={`查看${factorMeta[factor].label}說明`}
-                                />
-                              </span>
+                              <InfoTag
+                                key={factor}
+                                id={`result-row-${item.stock_id}-${factor}-info`}
+                                factor={factor}
+                                value={`${factorMeta[factor].label}：${item.factor_scores[factor]}`}
+                                activeInfoId={activeInfoId}
+                                setActiveInfoId={setActiveInfoId}
+                              />
                             ))}
                           </div>
                         </td>
@@ -3424,17 +3440,14 @@ export default function Home() {
                           </div>
                           <div className="factor-weight-list">
                             {factorKeys.map((factor) => (
-                              <span className="info-tag" key={factor}>
-                                {factorMeta[factor].label}：{run.factorWeights[factor]}%
-                                <InfoButton
-                                  id={`history-${run.id}-${factor}-info`}
-                                  title={factorDisplayName(factor)}
-                                  body={factorHelpText(factor)}
-                                  activeInfoId={activeInfoId}
-                                  setActiveInfoId={setActiveInfoId}
-                                  ariaLabel={`查看${factorMeta[factor].label}說明`}
-                                />
-                              </span>
+                              <InfoTag
+                                key={factor}
+                                id={`history-${run.id}-${factor}-info`}
+                                factor={factor}
+                                value={`${factorMeta[factor].label}：${run.factorWeights[factor]}%`}
+                                activeInfoId={activeInfoId}
+                                setActiveInfoId={setActiveInfoId}
+                              />
                             ))}
                           </div>
                           <div className="row">
