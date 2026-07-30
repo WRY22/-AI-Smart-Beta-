@@ -233,13 +233,6 @@ const factorHelpText = (factor: FactorKey) => {
 
 const factorDisplayName = (factor: FactorKey) => `${factorMeta[factor].label}（${factorMeta[factor].code}）`;
 
-const scoreForChart = (stock: Stock, factor: FactorKey) => {
-  const percentile = stock[`${factor}_percentile` as keyof Stock] as number;
-  return factor === "volatility" ? 100 - percentile : percentile;
-};
-
-const average = (values: number[]) => values.reduce((sum, value) => sum + value, 0) / Math.max(1, values.length);
-
 const candidateOnlyHelp = {
   title: "僅使用候選股票",
   body:
@@ -1291,6 +1284,24 @@ function PasswordField({
   );
 }
 
+function MessageLines({ message }: { message: string }) {
+  const lines = message
+    .replace(/：/g, "：\n")
+    .replace(/，/g, "，\n")
+    .replace(/。/g, "。\n")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  return (
+    <>
+      {lines.map((line) => (
+        <span key={line}>{line}</span>
+      ))}
+    </>
+  );
+}
+
 export default function Home() {
   const [view, setView] = useState<View>("welcome");
   const [query, setQuery] = useState("");
@@ -1351,15 +1362,6 @@ export default function Home() {
   const activeResult = createdResult;
   const recommendations = activeResult?.recommendations ?? [];
   const candidateStocks = useMemo(() => stocks.filter((stock) => candidateIds.includes(stock.stock_id)), [candidateIds]);
-  const factorChart = useMemo(
-    () =>
-      factorKeys.map((factor) => ({
-        factor,
-        label: factorMeta[factor].shortLabel,
-        value: Math.round(average(stocks.map((stock) => scoreForChart(stock, factor)))),
-      })),
-    [],
-  );
   const latestDataDate = useMemo(() => stocks.map((stock) => stock.data_date).sort().at(-1) ?? "未提供", []);
   const markets = useMemo(() => Array.from(new Set(stocks.map((stock) => stock.market))).join("、"), []);
   const weightErrors = validateFactorWeights(settings.factorWeights);
@@ -1919,7 +1921,6 @@ export default function Home() {
               {label}
             </button>
           ))}
-          <button type="button" onClick={() => openMarketDrawer("sample")}>市場探索中心</button>
         </nav>
         <div id="mobile-nav" className={mobileNavOpen ? "mobile-nav open" : "mobile-nav"} aria-label="手機導覽">
           {appNavItems.map(({ id, label }) => (
@@ -1927,7 +1928,6 @@ export default function Home() {
               {label}
             </button>
           ))}
-          <button type="button" onClick={() => openMarketDrawer("sample")}>市場探索中心</button>
           {user ? (
             <>
               <button type="button" onClick={() => navigate("account")}>我的帳戶</button>
@@ -1952,13 +1952,13 @@ export default function Home() {
             </>
           ) : (
             <>
-              <span className="guest-badge">訪客模式</span>
               <button className="button secondary compact-button" type="button" onClick={() => goToAuth("login")}>
                 登入
               </button>
               <button className="button ghost compact-button" type="button" onClick={() => goToAuth("register")}>
                 註冊
               </button>
+              <span className="guest-badge">訪客模式</span>
             </>
           )}
         </div>
@@ -1991,7 +1991,16 @@ export default function Home() {
                   {marketDrawer === "candidates" && `目前候選股票：${candidateIds.length} 檔`}
                 </p>
               </div>
-              <button className="icon-btn" type="button" aria-label="關閉市場探索中心" onClick={() => setMarketDrawer(null)}>
+              <button
+                className="icon-btn close-button"
+                type="button"
+                aria-label="關閉市場探索中心"
+                onPointerDown={(event) => {
+                  event.stopPropagation();
+                  setMarketDrawer(null);
+                }}
+                onClick={() => setMarketDrawer(null)}
+              >
                 ×
               </button>
             </div>
@@ -2151,7 +2160,6 @@ export default function Home() {
             <aside className="market-panel" aria-label="市場探索摘要">
               <div className="market-panel-head">
                 <strong>市場探索中心</strong>
-                <span className="tag">可點擊</span>
               </div>
               {marketHintVisible && (
                 <p className="notice compact">
@@ -2161,56 +2169,25 @@ export default function Home() {
                   </button>
                 </p>
               )}
-              <div className="market-chart" aria-label="目前樣本的因子概況">
+              <div className="market-chart" aria-label="市場探索中心介紹">
                 <div className="market-chart-title">
-                  <strong>目前樣本的因子概況</strong>
-                  <span>平均分數，0 到 100 分</span>
+                  <strong>掌握資料範圍、因子邏輯與候選清單</strong>
+                  <span>先理解系統如何看股票，再進一步建立投資組合。</span>
                 </div>
-                <div className="factor-chart-bars">
-                  {factorChart.map((item) => (
-                    <div
-                      className="factor-bar"
-                      role="button"
-                      tabIndex={0}
-                      key={item.factor}
-                      title={`${item.label}平均 ${item.value} 分。點擊查看因子說明。`}
-                      onClick={() => setActiveInfoId(`market-chart-${item.factor}-info`)}
-                      onKeyDown={(event) => {
-                        if (event.key !== "Enter" && event.key !== " ") return;
-                        event.preventDefault();
-                        setActiveInfoId(`market-chart-${item.factor}-info`);
-                      }}
-                    >
-                      <span className="bar-track">
-                        <span className="bar-fill" style={{ height: `${item.value}%` }} />
-                      </span>
-                      <span>{item.label}</span>
-                      <strong>{item.value}</strong>
-                      <InfoButton
-                        id={`market-chart-${item.factor}-info`}
-                        title={factorDisplayName(item.factor)}
-                        body={factorHelpText(item.factor)}
-                        activeInfoId={activeInfoId}
-                        setActiveInfoId={setActiveInfoId}
-                        ariaLabel={`查看${factorMeta[item.factor].label}說明`}
-                      />
-                    </div>
-                  ))}
-                </div>
-                <p className="subtle">顯示目前樣本股票在各項條件上的整體表現，僅用於了解資料分布，不代表投資建議。資料日期：{latestDataDate}</p>
+                <p className="subtle">因子說明集中在「因子介紹」中，避免首頁資訊過度擁擠。資料日期：{latestDataDate}</p>
               </div>
               <div className="market-actions">
                 <button type="button" onClick={() => openMarketDrawer("sample")}>
-                  <span className="subtle">樣本股票</span>
-                  <strong>{stocks.length}</strong>
+                  <strong>樣本資料</strong>
+                  <span>確認目前使用的資料範圍與更新時間</span>
                 </button>
                 <button type="button" onClick={() => openMarketDrawer("factors")}>
-                  <span className="subtle">因子</span>
-                  <strong>{factorKeys.length}</strong>
+                  <strong>因子介紹</strong>
+                  <span>理解市場敏感度、價值、動能等條件</span>
                 </button>
                 <button type="button" onClick={() => openMarketDrawer("candidates")}>
-                  <span className="subtle">候選</span>
-                  <strong>{candidateIds.length}</strong>
+                  <strong>候選清單</strong>
+                  <span>管理已加入觀察的股票並前往建立組合</span>
                 </button>
               </div>
             </aside>
@@ -3160,7 +3137,11 @@ export default function Home() {
               onToggle={() => setPasswordVisibility((current) => ({ ...current, login: !current.login }))}
               onChange={(value) => setLoginForm((current) => ({ ...current, password: value }))}
             />
-            {authMessage && <p className="warning-box">{authMessage}</p>}
+            {authMessage && (
+              <p className="warning-box message-lines">
+                <MessageLines message={authMessage} />
+              </p>
+            )}
             <button className="button" type="button" onClick={signIn}>
               登入
             </button>
@@ -3243,7 +3224,11 @@ export default function Home() {
                 <span>請再次輸入相同密碼。</span>
               )}
             </div>
-            {authMessage && <p className="warning-box">{authMessage}</p>}
+            {authMessage && (
+              <p className="warning-box message-lines">
+                <MessageLines message={authMessage} />
+              </p>
+            )}
             <button className="button" type="button" disabled={!registerFormValid} onClick={register}>
               註冊並登入
             </button>
