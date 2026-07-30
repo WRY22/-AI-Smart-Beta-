@@ -1,4 +1,4 @@
-import { createSession, ensureDatabaseSchema, getDb, jsonError, normalizeEmail, sessionCookie, verifyPassword } from "../../_lib/auth";
+import { createSession, ensureAuthSchema, getDb, jsonError, normalizeEmail, sessionCookie, verifyPassword } from "../../_lib/auth";
 
 export async function POST(request: Request) {
   try {
@@ -6,7 +6,7 @@ export async function POST(request: Request) {
     const identity = typeof payload.email === "string" ? payload.email.trim() : "";
     const email = normalizeEmail(identity);
     const password = payload.password ?? "";
-    await ensureDatabaseSchema();
+    await ensureAuthSchema();
     const user = await getDb()
       .prepare(
         `SELECT id, username, email, display_name as displayName, password_hash as passwordHash, created_at as createdAt

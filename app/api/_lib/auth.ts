@@ -23,30 +23,9 @@ export function getDb() {
 
 export async function ensureDatabaseSchema() {
   const db = getDb();
-  await db.batch([
-    db.prepare(
-      `CREATE TABLE IF NOT EXISTS users (
-        id text PRIMARY KEY NOT NULL,
-        username text,
-        email text NOT NULL,
-        display_name text NOT NULL,
-        password_hash text NOT NULL,
-        created_at text NOT NULL,
-        updated_at text NOT NULL
-      )`,
-    ),
-    db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS users_email_unique ON users (email)"),
-    db.prepare(
-      `CREATE TABLE IF NOT EXISTS sessions (
-        id text PRIMARY KEY NOT NULL,
-        user_id text NOT NULL,
-        token_hash text NOT NULL,
-        created_at text NOT NULL,
-        expires_at text NOT NULL,
-        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE cascade
-      )`,
-    ),
-    db.prepare(
+  await ensureAuthSchema();
+  await db
+    .prepare(
       `CREATE TABLE IF NOT EXISTS candidate_stocks (
         id text PRIMARY KEY NOT NULL,
         user_id text NOT NULL,
@@ -54,9 +33,11 @@ export async function ensureDatabaseSchema() {
         created_at text NOT NULL,
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE cascade
       )`,
-    ),
-    db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS candidate_user_ticker_unique ON candidate_stocks (user_id, ticker)"),
-    db.prepare(
+    )
+    .run();
+  await db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS candidate_user_ticker_unique ON candidate_stocks (user_id, ticker)").run();
+  await db
+    .prepare(
       `CREATE TABLE IF NOT EXISTS portfolio_runs (
         id text PRIMARY KEY NOT NULL,
         user_id text NOT NULL,
@@ -75,23 +56,52 @@ export async function ensureDatabaseSchema() {
         client_request_id text,
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE cascade
       )`,
-    ),
-  ]);
+    )
+    .run();
   await ensureColumn("users", "username", "text");
   await ensureColumn("portfolio_runs", "name", "text");
   await ensureColumn("portfolio_runs", "is_saved", "integer NOT NULL DEFAULT 1");
   await ensureColumn("portfolio_runs", "updated_at", "text");
   await ensureColumn("portfolio_runs", "expires_at", "text");
   await ensureColumn("portfolio_runs", "client_request_id", "text");
-  await db.batch([
-    db.prepare("UPDATE users SET username = id WHERE username IS NULL OR username = ''"),
-    db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS users_username_unique ON users (username)"),
-    db.prepare("UPDATE portfolio_runs SET name = portfolio_type || '－' || substr(created_at, 1, 10) WHERE name IS NULL OR name = ''"),
-    db.prepare("UPDATE portfolio_runs SET updated_at = created_at WHERE updated_at IS NULL OR updated_at = ''"),
-    db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS portfolio_runs_user_client_request_unique ON portfolio_runs (user_id, client_request_id)"),
-    db.prepare("CREATE INDEX IF NOT EXISTS portfolio_runs_user_saved_created_idx ON portfolio_runs (user_id, is_saved, created_at)"),
-    db.prepare("CREATE INDEX IF NOT EXISTS portfolio_runs_user_expires_idx ON portfolio_runs (user_id, expires_at)"),
-  ]);
+  await db.prepare("UPDATE portfolio_runs SET name = portfolio_type || '－' || substr(created_at, 1, 10) WHERE name IS NULL OR name = ''").run();
+  await db.prepare("UPDATE portfolio_runs SET updated_at = created_at WHERE updated_at IS NULL OR updated_at = ''").run();
+  await db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS portfolio_runs_user_client_request_unique ON portfolio_runs (user_id, client_request_id)").run();
+  await db.prepare("CREATE INDEX IF NOT EXISTS portfolio_runs_user_saved_created_idx ON portfolio_runs (user_id, is_saved, created_at)").run();
+  await db.prepare("CREATE INDEX IF NOT EXISTS portfolio_runs_user_expires_idx ON portfolio_runs (user_id, expires_at)").run();
+}
+
+export async function ensureAuthSchema() {
+  const db = getDb();
+  await db
+    .prepare(
+      `CREATE TABLE IF NOT EXISTS users (
+        id text PRIMARY KEY NOT NULL,
+        username text,
+        email text NOT NULL,
+        display_name text NOT NULL,
+        password_hash text NOT NULL,
+        created_at text NOT NULL,
+        updated_at text NOT NULL
+      )`,
+    )
+    .run();
+  await ensureColumn("users", "username", "text");
+  await db.prepare("UPDATE users SET username = id WHERE username IS NULL OR username = ''").run();
+  await db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS users_email_unique ON users (email)").run();
+  await db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS users_username_unique ON users (username)").run();
+  await db
+    .prepare(
+      `CREATE TABLE IF NOT EXISTS sessions (
+        id text PRIMARY KEY NOT NULL,
+        user_id text NOT NULL,
+        token_hash text NOT NULL,
+        created_at text NOT NULL,
+        expires_at text NOT NULL,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE cascade
+      )`,
+    )
+    .run();
 }
 
 export function nowIso() {

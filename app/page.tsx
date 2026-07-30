@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
-type View = "home" | "explore" | "detail" | "builder" | "results" | "about" | "login" | "register" | "account";
+type View = "welcome" | "home" | "explore" | "detail" | "builder" | "results" | "about" | "login" | "register" | "account";
 type RiskPreference = "conservative" | "balanced" | "aggressive";
 type AllocationMethod = "equal" | "score";
 type FactorKey = "beta" | "smb" | "rmw" | "cma" | "hmlo" | "momentum" | "volatility";
@@ -137,6 +137,7 @@ type HomeCategoryKey = "popular" | "overall" | "momentum" | "stable";
 type AccountTab = "profile" | "history" | "candidates";
 type HistoryMode = "recent" | "saved";
 type SaveStatus = "idle" | "saving" | "saved" | "error";
+type MarketDrawer = "sample" | "factors" | "candidates" | null;
 
 const factorMeta: Record<
   FactorKey,
@@ -231,6 +232,13 @@ const factorHelpText = (factor: FactorKey) => {
 };
 
 const factorDisplayName = (factor: FactorKey) => `${factorMeta[factor].label}（${factorMeta[factor].code}）`;
+
+const scoreForChart = (stock: Stock, factor: FactorKey) => {
+  const percentile = stock[`${factor}_percentile` as keyof Stock] as number;
+  return factor === "volatility" ? 100 - percentile : percentile;
+};
+
+const average = (values: number[]) => values.reduce((sum, value) => sum + value, 0) / Math.max(1, values.length);
 
 const candidateOnlyHelp = {
   title: "僅使用候選股票",
@@ -1284,7 +1292,7 @@ function PasswordField({
 }
 
 export default function Home() {
-  const [view, setView] = useState<View>("home");
+  const [view, setView] = useState<View>("welcome");
   const [query, setQuery] = useState("");
   const [industry, setIndustry] = useState("全部");
   const [minStar, setMinStar] = useState(1);
@@ -1309,7 +1317,10 @@ export default function Home() {
     register: false,
     registerConfirm: false,
   });
-  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [marketDrawer, setMarketDrawer] = useState<MarketDrawer>(null);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [authReturnTo, setAuthReturnTo] = useState<View>("home");
+  const [marketHintVisible, setMarketHintVisible] = useState(false);
   const [homeCategory, setHomeCategory] = useState<HomeCategoryKey>("popular");
   const [homePage, setHomePage] = useState(1);
   const [homePageSize, setHomePageSize] = useState(8);
@@ -1340,6 +1351,17 @@ export default function Home() {
   const activeResult = createdResult;
   const recommendations = activeResult?.recommendations ?? [];
   const candidateStocks = useMemo(() => stocks.filter((stock) => candidateIds.includes(stock.stock_id)), [candidateIds]);
+  const factorChart = useMemo(
+    () =>
+      factorKeys.map((factor) => ({
+        factor,
+        label: factorMeta[factor].shortLabel,
+        value: Math.round(average(stocks.map((stock) => scoreForChart(stock, factor)))),
+      })),
+    [],
+  );
+  const latestDataDate = useMemo(() => stocks.map((stock) => stock.data_date).sort().at(-1) ?? "未提供", []);
+  const markets = useMemo(() => Array.from(new Set(stocks.map((stock) => stock.market))).join("、"), []);
   const weightErrors = validateFactorWeights(settings.factorWeights);
   const stepErrors = {
     1: validateStepOne(settings, candidateIds.length),
@@ -1414,14 +1436,20 @@ export default function Home() {
   useEffect(() => {
     queueMicrotask(() => {
       const storedIds = loadStoredCandidateIds();
+      const hasEntered = window.localStorage.getItem("smartBetaEntered") === "true";
       setCandidateIds(storedIds);
       setSettings(loadStoredSettings());
+      if (hasEntered) setView("home");
       setStorageReady(true);
       fetch("/api/auth/me", { credentials: "include" })
         .then((response) => response.json())
         .then(async (data: { user: AppUser | null }) => {
           setUser(data.user);
-          if (data.user) await mergeServerCandidates(storedIds);
+          if (data.user) {
+            window.localStorage.setItem("smartBetaEntered", "true");
+            setView((current) => (current === "welcome" ? "home" : current));
+            await mergeServerCandidates(storedIds);
+          }
         })
         .catch(() => setUser(null));
     });
@@ -1429,9 +1457,18 @@ export default function Home() {
 
   useEffect(() => {
     if (!storageReady) return;
-    const timer = window.setTimeout(() => setLoadingVisible(false), 650);
+    const timer = window.setTimeout(() => setLoadingVisible(false), 920);
     return () => window.clearTimeout(timer);
   }, [storageReady]);
+
+  useEffect(() => {
+    if (!storageReady || view !== "home") return;
+    const hasReadHint = window.localStorage.getItem("smartBetaMarketHintRead") === "true";
+    if (hasReadHint) return;
+    const timer = window.setTimeout(() => setMarketHintVisible(true), 0);
+    window.localStorage.setItem("smartBetaMarketHintRead", "true");
+    return () => window.clearTimeout(timer);
+  }, [storageReady, view]);
 
   useEffect(() => {
     if (!storageReady) return;
@@ -1552,7 +1589,8 @@ export default function Home() {
     }
     setUser(data.user);
     await mergeServerCandidates(candidateIds);
-    navigate("account");
+    window.localStorage.setItem("smartBetaEntered", "true");
+    navigate(authReturnTo === "login" || authReturnTo === "register" || authReturnTo === "welcome" ? "home" : authReturnTo);
   };
 
   const register = async () => {
@@ -1574,14 +1612,15 @@ export default function Home() {
     }
     setUser(data.user);
     await mergeServerCandidates(candidateIds);
-    navigate("account");
+    window.localStorage.setItem("smartBetaEntered", "true");
+    navigate(authReturnTo === "login" || authReturnTo === "register" || authReturnTo === "welcome" ? "home" : authReturnTo);
   };
 
   const signOut = async () => {
     await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
     setUser(null);
     setHistoryItems([]);
-    navigate("home");
+    navigate("welcome");
   };
 
   const startNewAccount = async () => {
@@ -1591,6 +1630,7 @@ export default function Home() {
     setAuthMessage("");
     setLoginForm({ identity: "", password: "" });
     setRegisterForm({ username: "", email: "", password: "", confirmPassword: "" });
+    setAuthReturnTo(view === "login" || view === "register" ? "home" : view);
     navigate("register");
   };
 
@@ -1821,8 +1861,37 @@ export default function Home() {
 
   const navigate = (next: View) => {
     setView(next);
+    setMobileNavOpen(false);
+    setMarketDrawer(null);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
+
+  const enterAsGuest = (next: View = "home") => {
+    window.localStorage.setItem("smartBetaEntered", "true");
+    setAuthMessage("");
+    navigate(next);
+  };
+
+  const goToAuth = (next: "login" | "register", returnTo: View = view) => {
+    setAuthMessage("");
+    setAuthReturnTo(returnTo === "welcome" || returnTo === "login" || returnTo === "register" ? "home" : returnTo);
+    navigate(next);
+  };
+
+  const openMarketDrawer = (next: Exclude<MarketDrawer, null>) => {
+    setMarketDrawer(next);
+    setMobileNavOpen(false);
+    if (view === "welcome" || view === "login" || view === "register") setView("home");
+  };
+
+  const appNavItems: { id: View; label: string }[] = [
+    { id: "home", label: "首頁" },
+    { id: "explore", label: "股票探索" },
+    { id: "builder", label: "建立投資組合" },
+    { id: "results", label: "結果" },
+    { id: "about", label: "系統說明" },
+  ];
+  const showAppShell = view !== "welcome" && view !== "login" && view !== "register";
 
   return (
     <div className="app-shell">
@@ -1835,24 +1904,39 @@ export default function Home() {
           </div>
         </div>
       )}
+      {showAppShell && (
       <header className="topbar">
-        <div className="brand">
+        <button className="brand brand-button" type="button" onClick={() => navigate("home")} aria-label="返回首頁">
           <span className="brand-mark" aria-hidden="true" />
           <span>AI x Smart Beta</span>
-        </div>
+        </button>
+        <button className="icon-btn menu-toggle" type="button" aria-expanded={mobileNavOpen} aria-controls="mobile-nav" onClick={() => setMobileNavOpen((current) => !current)}>
+          ☰
+        </button>
         <nav className="nav" aria-label="主要導覽">
-          {[
-            ["home", "首頁"],
-            ["explore", "股票探索"],
-            ["builder", "建立投資組合"],
-            ["results", "結果"],
-            ["about", "系統說明"],
-          ].map(([id, label]) => (
-            <button key={id} className={view === id ? "active" : ""} onClick={() => navigate(id as View)}>
+          {appNavItems.map(({ id, label }) => (
+            <button key={id} className={view === id ? "active" : ""} onClick={() => navigate(id)}>
               {label}
             </button>
           ))}
+          <button type="button" onClick={() => openMarketDrawer("sample")}>市場探索中心</button>
         </nav>
+        <div id="mobile-nav" className={mobileNavOpen ? "mobile-nav open" : "mobile-nav"} aria-label="手機導覽">
+          {appNavItems.map(({ id, label }) => (
+            <button key={id} className={view === id ? "active" : ""} type="button" onClick={() => navigate(id)}>
+              {label}
+            </button>
+          ))}
+          <button type="button" onClick={() => openMarketDrawer("sample")}>市場探索中心</button>
+          {user ? (
+            <>
+              <button type="button" onClick={() => navigate("account")}>我的帳戶</button>
+              <button type="button" onClick={signOut}>登出</button>
+            </>
+          ) : (
+            <button type="button" onClick={() => goToAuth("login")}>登入</button>
+          )}
+        </div>
         <div className="top-actions">
           {user ? (
             <>
@@ -1868,10 +1952,11 @@ export default function Home() {
             </>
           ) : (
             <>
-              <button className={view === "login" ? "button compact-button" : "button secondary compact-button"} type="button" onClick={() => navigate("login")}>
+              <span className="guest-badge">訪客模式</span>
+              <button className="button secondary compact-button" type="button" onClick={() => goToAuth("login")}>
                 登入
               </button>
-              <button className={view === "register" ? "button compact-button" : "button ghost compact-button"} type="button" onClick={() => navigate("register")}>
+              <button className="button ghost compact-button" type="button" onClick={() => goToAuth("register")}>
                 註冊
               </button>
             </>
@@ -1888,74 +1973,156 @@ export default function Home() {
           }}
         />
       </header>
-      <button
-        className={`candidate-fab ${candidateIds.length ? "has-items" : ""}`}
-        type="button"
-        onClick={() => setDrawerOpen(true)}
-        aria-label={`開啟候選清單，目前 ${candidateIds.length} 檔股票`}
-      >
-        <span className="candidate-fab-icon" aria-hidden="true">
-          ◎
-        </span>
-        <span>
-          候選清單
-          <small>{candidateIds.length} 檔</small>
-        </span>
-      </button>
-      {drawerOpen && (
-        <div className="drawer-layer" role="presentation" onPointerDown={() => setDrawerOpen(false)}>
-          <aside className="candidate-drawer" role="dialog" aria-label="候選股票清單" onPointerDown={(event) => event.stopPropagation()}>
+      )}
+
+      {marketDrawer && (
+        <div className="drawer-layer" role="presentation" onPointerDown={() => setMarketDrawer(null)}>
+          <aside className="market-drawer" role="dialog" aria-label="市場探索中心" onPointerDown={(event) => event.stopPropagation()}>
             <div className="section-head compact-head">
               <div>
-                <h2>候選清單</h2>
-                <p>目前候選股票：{candidateIds.length} 檔</p>
+                <h2>
+                  {marketDrawer === "sample" && "樣本資料範圍"}
+                  {marketDrawer === "factors" && "因子完整介紹"}
+                  {marketDrawer === "candidates" && "候選股票清單"}
+                </h2>
+                <p>
+                  {marketDrawer === "sample" && "了解目前網站實際使用的股票資料。"}
+                  {marketDrawer === "factors" && "查看系統目前使用的 7 個選股因子。"}
+                  {marketDrawer === "candidates" && `目前候選股票：${candidateIds.length} 檔`}
+                </p>
               </div>
-              <button className="icon-btn" type="button" aria-label="關閉候選清單" onClick={() => setDrawerOpen(false)}>
+              <button className="icon-btn" type="button" aria-label="關閉市場探索中心" onClick={() => setMarketDrawer(null)}>
                 ×
               </button>
             </div>
-            {candidateStocks.length ? (
-              <div className="drawer-list">
-                {candidateStocks.map((stock) => (
-                  <div className="drawer-item" key={stock.stock_id}>
-                    <div>
-                      <strong>{stock.stock_name}</strong>
-                      <p className="subtle">
-                        {stock.stock_id} · {stock.industry} · {starText(stock.overall_star)}
-                      </p>
-                    </div>
-                    <button className="button ghost compact-button" type="button" onClick={() => toggleCandidate(stock.stock_id)}>
-                      移除
-                    </button>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="empty-state">
-                <strong>尚未加入候選股票</strong>
-                <p className="subtle">可以先到股票探索頁把想觀察的標的加入清單。</p>
+
+            {marketDrawer === "sample" && (
+              <div className="grid">
+                <div className="notice">
+                  <strong>目前為示範資料，尚未包含所有股票。</strong>
+                  <p>本網站目前使用內建樣本股票展示 Smart Beta 流程，不代表完整台股市場資料。</p>
+                </div>
+                <div className="grid two drawer-stat-grid">
+                  <div className="kpi">樣本股票數量<strong>{stocks.length} 檔</strong></div>
+                  <div className="kpi">資料市場<strong>{markets}</strong></div>
+                  <div className="kpi">資料更新時間<strong>{latestDataDate}</strong></div>
+                  <div className="kpi">資料期間<strong>樣本截面資料</strong></div>
+                </div>
+                <p className="subtle">
+                  股票篩選條件：目前樣本涵蓋半導體、金融保險、電信服務、電子零組件、航運、光電與消費品等產業；缺少完整市場成分股、歷史批次更新與正式 TEJ/API 串接。
+                </p>
               </div>
             )}
-            <div className="drawer-actions">
-              <button
-                className="button"
-                type="button"
-                onClick={() => {
-                  setDrawerOpen(false);
-                  navigate("builder");
-                }}
-              >
-                前往建立投資組合
-              </button>
-              <button className="button secondary" type="button" onClick={() => navigate("explore")}>
-                前往選股頁面
-              </button>
-              <button className="button ghost" type="button" disabled={!candidateIds.length} onClick={clearCandidates}>
-                清空候選
-              </button>
-            </div>
+
+            {marketDrawer === "factors" && (
+              <div className="drawer-list">
+                {factorKeys.map((factor) => (
+                  <article className="drawer-info-card" key={factor}>
+                    <div className="row" style={{ justifyContent: "space-between" }}>
+                      <strong>{factorMeta[factor].label}</strong>
+                      <span className="tag">{factorMeta[factor].code}</span>
+                    </div>
+                    <p>{factorMeta[factor].help}</p>
+                    <p><strong>分數高：</strong>{factorMeta[factor].highMeaning}</p>
+                    <p><strong>分數低：</strong>{factorMeta[factor].lowMeaning}</p>
+                    <p><strong>提高權重：</strong>{factorMeta[factor].weightImpact}</p>
+                    <p><strong>注意風險：</strong>{factorMeta[factor].risk}</p>
+                  </article>
+                ))}
+              </div>
+            )}
+
+            {marketDrawer === "candidates" && (
+              <>
+                {candidateStocks.length ? (
+                  <div className="drawer-list">
+                    {candidateStocks.map((stock, index) => (
+                      <div className="drawer-item" key={stock.stock_id}>
+                        <div>
+                          <strong>{stock.stock_name}</strong>
+                          <p className="subtle">
+                            {stock.stock_id} · {stock.industry} · 加入順序 {index + 1} · {starText(stock.overall_star)}
+                          </p>
+                        </div>
+                        <div className="row">
+                          <button
+                            className="button secondary compact-button"
+                            type="button"
+                            onClick={() => {
+                              setSelectedId(stock.stock_id);
+                              setMarketDrawer(null);
+                              navigate("detail");
+                            }}
+                          >
+                            詳情
+                          </button>
+                          <button className="button ghost compact-button" type="button" onClick={() => toggleCandidate(stock.stock_id)}>
+                            移除
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="empty-state">
+                    <strong>尚未加入候選股票</strong>
+                    <p className="subtle">可以先到股票探索頁把想觀察的標的加入清單。</p>
+                  </div>
+                )}
+                <div className="drawer-actions">
+                  <button
+                    className="button"
+                    type="button"
+                    onClick={() => {
+                      setMarketDrawer(null);
+                      navigate("builder");
+                    }}
+                  >
+                    前往建立投資組合
+                  </button>
+                  <button
+                    className="button secondary"
+                    type="button"
+                    onClick={() => {
+                      setMarketDrawer(null);
+                      navigate("explore");
+                    }}
+                  >
+                    前往股票探索
+                  </button>
+                  <button className="button ghost" type="button" disabled={!candidateIds.length} onClick={clearCandidates}>
+                    清空候選
+                  </button>
+                </div>
+              </>
+            )}
           </aside>
         </div>
+      )}
+
+      {view === "welcome" && (
+        <main className="welcome-layout">
+          <section className="welcome-panel">
+            <div className="welcome-logo" aria-hidden="true" />
+            <p className="eyebrow">AI x Smart Beta</p>
+            <h1>用簡單的方式，建立適合自己的投資組合</h1>
+            <p>
+              透過多因子評分與自訂投資條件，協助您理解股票特性並建立投資組合。本系統僅供研究與學習參考。
+            </p>
+            <div className="welcome-actions">
+              <button className="button" type="button" onClick={() => goToAuth("login", "home")}>
+                登入
+              </button>
+              <button className="button secondary" type="button" onClick={() => goToAuth("register", "home")}>
+                免費註冊
+              </button>
+              <button className="button ghost" type="button" onClick={() => enterAsGuest("home")}>
+                以訪客身分使用
+              </button>
+            </div>
+            <p className="subtle">訪客可瀏覽股票、建立投資組合，候選清單與近期結果會保存在此瀏覽器。</p>
+          </section>
+        </main>
       )}
 
       {view === "home" && (
@@ -1982,25 +2149,69 @@ export default function Home() {
               <p className="subtle">最新資料更新日期：2026-07-19。本系統為投資決策輔助，非投資保證。</p>
             </div>
             <aside className="market-panel" aria-label="市場探索摘要">
-              <strong>市場探索中心</strong>
-              <div className="market-chart">
-                {[42, 55, 48, 74, 62, 88, 69, 92, 57].map((height, index) => (
-                  <span className="bar" key={index} style={{ height: `${height}%` }} />
-                ))}
+              <div className="market-panel-head">
+                <strong>市場探索中心</strong>
+                <span className="tag">可點擊</span>
               </div>
-              <div className="grid three">
-                <div>
+              {marketHintVisible && (
+                <p className="notice compact">
+                  點擊「因子」可查看各項選股因子的說明；點擊「候選」可查看目前加入的候選股票。
+                  <button className="button ghost compact-button inline-action" type="button" onClick={() => setMarketHintVisible(false)}>
+                    知道了
+                  </button>
+                </p>
+              )}
+              <div className="market-chart" aria-label="目前樣本的因子概況">
+                <div className="market-chart-title">
+                  <strong>目前樣本的因子概況</strong>
+                  <span>平均分數，0 到 100 分</span>
+                </div>
+                <div className="factor-chart-bars">
+                  {factorChart.map((item) => (
+                    <div
+                      className="factor-bar"
+                      role="button"
+                      tabIndex={0}
+                      key={item.factor}
+                      title={`${item.label}平均 ${item.value} 分。點擊查看因子說明。`}
+                      onClick={() => setActiveInfoId(`market-chart-${item.factor}-info`)}
+                      onKeyDown={(event) => {
+                        if (event.key !== "Enter" && event.key !== " ") return;
+                        event.preventDefault();
+                        setActiveInfoId(`market-chart-${item.factor}-info`);
+                      }}
+                    >
+                      <span className="bar-track">
+                        <span className="bar-fill" style={{ height: `${item.value}%` }} />
+                      </span>
+                      <span>{item.label}</span>
+                      <strong>{item.value}</strong>
+                      <InfoButton
+                        id={`market-chart-${item.factor}-info`}
+                        title={factorDisplayName(item.factor)}
+                        body={factorHelpText(item.factor)}
+                        activeInfoId={activeInfoId}
+                        setActiveInfoId={setActiveInfoId}
+                        ariaLabel={`查看${factorMeta[item.factor].label}說明`}
+                      />
+                    </div>
+                  ))}
+                </div>
+                <p className="subtle">顯示目前樣本股票在各項條件上的整體表現，僅用於了解資料分布，不代表投資建議。資料日期：{latestDataDate}</p>
+              </div>
+              <div className="market-actions">
+                <button type="button" onClick={() => openMarketDrawer("sample")}>
                   <span className="subtle">樣本股票</span>
                   <strong>{stocks.length}</strong>
-                </div>
-                <div>
+                </button>
+                <button type="button" onClick={() => openMarketDrawer("factors")}>
                   <span className="subtle">因子</span>
-                  <strong>7</strong>
-                </div>
-                <div>
+                  <strong>{factorKeys.length}</strong>
+                </button>
+                <button type="button" onClick={() => openMarketDrawer("candidates")}>
                   <span className="subtle">候選</span>
                   <strong>{candidateIds.length}</strong>
-                </div>
+                </button>
               </div>
             </aside>
           </section>
@@ -2927,6 +3138,10 @@ export default function Home() {
       {view === "login" && (
         <main className="main auth-layout">
           <section className="card auth-card">
+            <div className="auth-brand">
+              <span className="brand-mark" aria-hidden="true" />
+              <strong>AI x Smart Beta</strong>
+            </div>
             <h2 className="panel-title">登入帳號</h2>
             <p className="subtle">登入後可同步候選股票並保存每次建立的投資組合紀錄。</p>
             <label className="label">
@@ -2949,8 +3164,14 @@ export default function Home() {
             <button className="button" type="button" onClick={signIn}>
               登入
             </button>
-            <button className="button ghost" type="button" onClick={() => navigate("register")}>
+            <button className="button ghost" type="button" onClick={() => goToAuth("register", authReturnTo)}>
               還沒有帳號，前往註冊
+            </button>
+            <button className="button secondary" type="button" onClick={() => enterAsGuest(authReturnTo)}>
+              先以訪客身分使用
+            </button>
+            <button className="button ghost" type="button" onClick={() => navigate("welcome")}>
+              返回入口頁
             </button>
           </section>
         </main>
@@ -2959,6 +3180,10 @@ export default function Home() {
       {view === "register" && (
         <main className="main auth-layout">
           <section className="card auth-card">
+            <div className="auth-brand">
+              <span className="brand-mark" aria-hidden="true" />
+              <strong>AI x Smart Beta</strong>
+            </div>
             <h2 className="panel-title">建立帳號</h2>
             <p className="subtle">註冊後，瀏覽器中的候選清單會合併到你的帳號。</p>
             <label className="label">
@@ -3022,8 +3247,14 @@ export default function Home() {
             <button className="button" type="button" disabled={!registerFormValid} onClick={register}>
               註冊並登入
             </button>
-            <button className="button ghost" type="button" onClick={() => navigate("login")}>
+            <button className="button ghost" type="button" onClick={() => goToAuth("login", authReturnTo)}>
               已有帳號，前往登入
+            </button>
+            <button className="button secondary" type="button" onClick={() => enterAsGuest(authReturnTo)}>
+              先以訪客身分使用
+            </button>
+            <button className="button ghost" type="button" onClick={() => navigate("welcome")}>
+              返回入口頁
             </button>
           </section>
         </main>
@@ -3272,9 +3503,11 @@ export default function Home() {
         </main>
       )}
 
-      <footer className="footer-note">
-        本網站提供之股票資訊、因子分數、投資組合建議與 AI 說明僅供學術專題展示與投資決策輔助參考，不構成任何投資建議、招攬或報酬保證。投資一定有風險，實際交易前請自行評估並承擔盈虧責任。
-      </footer>
+      {showAppShell && (
+        <footer className="footer-note">
+          本網站提供之股票資訊、因子分數、投資組合建議與 AI 說明僅供學術專題展示與投資決策輔助參考，不構成任何投資建議、招攬或報酬保證。投資一定有風險，實際交易前請自行評估並承擔盈虧責任。
+        </footer>
+      )}
     </div>
   );
 }

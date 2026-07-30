@@ -1,7 +1,7 @@
 import {
   createId,
   createSession,
-  ensureDatabaseSchema,
+  ensureAuthSchema,
   getDb,
   hashPassword,
   isValidEmail,
@@ -35,7 +35,7 @@ export async function POST(request: Request) {
     if (passwordErrors.length) return jsonError(passwordErrors[0]);
     if (password !== confirmPassword) return jsonError("兩次輸入的密碼不一致。");
 
-    await ensureDatabaseSchema();
+    await ensureAuthSchema();
     const db = getDb();
     const existingEmail = await db.prepare("SELECT id FROM users WHERE email = ?").bind(email).first();
     if (existingEmail) return jsonError("這個電子郵件已經註冊。", 409);

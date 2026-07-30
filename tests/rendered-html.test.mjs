@@ -30,9 +30,25 @@ test("auth and portfolio persistence keep schema and cookies compatible", async 
   assert.match(auth, /decodeURIComponent\(value\)/);
   assert.match(auth, /Max-Age=/);
   assert.match(auth, /ensureColumn\("users", "username", "text"\)/);
+  assert.match(auth, /export async function ensureAuthSchema/);
   assert.match(auth, /CREATE UNIQUE INDEX IF NOT EXISTS users_username_unique/);
   assert.match(runs, /clientRequestId/);
   assert.match(runs, /isSaved/);
   assert.match(runs, /cleanupExpiredRuns/);
   assert.match(migration, /UPDATE `users` SET `username` = `id`/);
+});
+
+test("welcome layout and market center replace the floating candidate entry", async () => {
+  const [page, css] = await Promise.all([readFile(pagePath, "utf8"), readFile(new URL("../app/globals.css", import.meta.url), "utf8")]);
+
+  assert.match(page, /用簡單的方式，建立適合自己的投資組合/);
+  assert.match(page, /以訪客身分使用/);
+  assert.match(page, /smartBetaEntered/);
+  assert.match(page, /市場探索中心/);
+  assert.match(page, /目前樣本的因子概況/);
+  assert.match(page, /openMarketDrawer\("candidates"\)/);
+  assert.doesNotMatch(page, /candidate-fab/);
+  assert.doesNotMatch(css, /candidate-fab/);
+  assert.match(css, /@media \(prefers-reduced-motion: reduce\)/);
+  assert.match(css, /\.mobile-nav\.open/);
 });
