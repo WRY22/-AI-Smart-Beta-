@@ -114,7 +114,7 @@ button:disabled {
   grid-template-columns: max-content minmax(0, 1fr) max-content minmax(220px, 320px);
   align-items: center;
   gap: 22px;
-  min-height: 64px;
+  min-height: 74px;
   padding: 0 clamp(16px, 3vw, 40px);
   background: rgba(255, 255, 255, 0.96);
   border-bottom: 1px solid var(--line);
@@ -124,7 +124,7 @@ button:disabled {
 .brand {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   min-width: max-content;
   font-size: 14px;
   font-weight: 800;
@@ -132,10 +132,66 @@ button:disabled {
 
 .brand-mark {
   display: block;
-  width: 42px;
-  height: 42px;
-  border-radius: 8px;
+  width: 58px;
+  height: 58px;
+  border-radius: 10px;
   background: url("/smart-beta-logo.png") center / contain no-repeat;
+}
+
+.loading-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: grid;
+  place-content: center;
+  gap: 16px;
+  padding: 24px;
+  color: #f5f0df;
+  background:
+    radial-gradient(circle at 52% 38%, rgba(238, 176, 45, 0.2), transparent 28%),
+    linear-gradient(135deg, #18241e 0%, #0c1814 58%, #201d17 100%);
+}
+
+.loading-brand {
+  width: min(240px, 60vw);
+  aspect-ratio: 1;
+  margin: 0 auto;
+  background: url("/smart-beta-logo.png") center / contain no-repeat;
+  filter: drop-shadow(0 20px 34px rgba(0, 0, 0, 0.28));
+}
+
+.loading-screen p {
+  margin: 0;
+  text-align: center;
+  font-size: 15px;
+  font-weight: 850;
+  letter-spacing: 0;
+}
+
+.loading-progress {
+  width: min(280px, 70vw);
+  height: 5px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.loading-progress span {
+  display: block;
+  width: 42%;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #f2a91f, #ffe082, #f2a91f);
+  animation: loading-sweep 1.15s ease-in-out infinite;
+}
+
+@keyframes loading-sweep {
+  0% {
+    transform: translateX(-115%);
+  }
+  100% {
+    transform: translateX(260%);
+  }
 }
 
 .nav {
@@ -586,14 +642,19 @@ button:disabled {
 }
 
 .info-tag {
-  gap: 8px;
-  justify-content: space-between;
+  display: inline-grid;
+  grid-template-columns: max-content 30px;
+  align-items: center;
+  justify-content: start;
+  gap: 10px;
   min-height: 38px;
   border: 1px solid var(--line);
-  padding: 4px 5px 4px 14px;
+  border-radius: 999px;
+  padding: 4px 5px 4px 16px;
   background: #eaf3ef;
   font-size: 14px;
   line-height: 1;
+  white-space: nowrap;
 }
 
 .info-tag .info-dot {
@@ -986,25 +1047,27 @@ tbody tr:hover {
   flex-wrap: wrap;
   align-items: center;
   justify-content: flex-start;
-  gap: 9px;
+  gap: 10px;
 }
 
 .factor-weight-list span,
 .factor-score-list span {
-  display: inline-flex;
+  display: inline-grid;
+  grid-template-columns: max-content 30px;
   align-items: center;
-  justify-content: space-between;
+  justify-content: start;
   min-height: 40px;
-  min-width: 148px;
+  min-width: 0;
   border: 1px solid var(--line);
   border-radius: 999px;
-  padding: 5px 6px 5px 14px;
+  padding: 5px 5px 5px 16px;
   color: #3f4c45;
   background: #eef5f2;
   font-size: 14px;
   font-weight: 750;
   line-height: 1.2;
   white-space: nowrap;
+  column-gap: 10px;
 }
 
 .save-panel {

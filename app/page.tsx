@@ -1298,6 +1298,7 @@ export default function Home() {
   const [applyPreset, setApplyPreset] = useState<Exclude<PortfolioType, "自訂型">>("均衡型");
   const [settings, setSettings] = useState<PortfolioSettings>(initialSettings);
   const [storageReady, setStorageReady] = useState(false);
+  const [loadingVisible, setLoadingVisible] = useState(true);
   const [activeInfoId, setActiveInfoId] = useState<string | null>(null);
   const [user, setUser] = useState<AppUser | null>(null);
   const [authMessage, setAuthMessage] = useState("");
@@ -1425,6 +1426,12 @@ export default function Home() {
         .catch(() => setUser(null));
     });
   }, []);
+
+  useEffect(() => {
+    if (!storageReady) return;
+    const timer = window.setTimeout(() => setLoadingVisible(false), 650);
+    return () => window.clearTimeout(timer);
+  }, [storageReady]);
 
   useEffect(() => {
     if (!storageReady) return;
@@ -1819,6 +1826,15 @@ export default function Home() {
 
   return (
     <div className="app-shell">
+      {loadingVisible && (
+        <div className="loading-screen" role="status" aria-live="polite" aria-label="網站載入中">
+          <div className="loading-brand" aria-hidden="true" />
+          <p>AI Smart Beta 載入中</p>
+          <div className="loading-progress" aria-hidden="true">
+            <span />
+          </div>
+        </div>
+      )}
       <header className="topbar">
         <div className="brand">
           <span className="brand-mark" aria-hidden="true" />
