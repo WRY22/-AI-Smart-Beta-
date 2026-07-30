@@ -18,7 +18,7 @@ test("portfolio builder exposes the localized save flow", async () => {
   assert.match(page, /投資組合名稱/);
   assert.match(page, /近期結果/);
   assert.match(page, /已儲存/);
-  assert.match(page, /註冊新帳號/);
+  assert.doesNotMatch(page, /註冊新帳號/);
   assert.match(page, /使用者名稱或電子信箱/);
   assert.match(page, /<EyeIcon off=\{visible\} \/>/);
 });
@@ -67,12 +67,21 @@ test("welcome layout and market center replace the floating candidate entry", as
   assert.match(page, /role="tablist" aria-label="市場探索分類"/);
   assert.match(page, /function InfoTag/);
   assert.match(page, /className="mobile-nav-layer"/);
+  assert.match(page, /const navigate = \(next: View\) => \{[\s\S]*setMobileNavOpen\(false\)/);
+  assert.match(page, /event\.key !== "Escape"[\s\S]*setMobileNavOpen\(false\)/);
+  for (const label of ["首頁", "股票探索", "建立投資組合", "結果", "系統說明"]) {
+    assert.match(page, new RegExp(`label: "${label}"`));
+  }
   assert.doesNotMatch(page, /可點擊/);
   assert.match(page, /openMarketDrawer\("candidates"\)/);
   assert.doesNotMatch(page, /candidate-fab/);
   assert.doesNotMatch(css, /candidate-fab/);
   assert.match(css, /@media \(prefers-reduced-motion: reduce\)/);
   assert.match(css, /\.mobile-nav\.open/);
+  assert.match(css, /width: min\(360px, 88vw\)/);
+  assert.match(css, /\.mobile-nav button\s*\{[\s\S]*min-height: 46px/);
+  assert.match(css, /\.preset\s*\{[\s\S]*justify-content: flex-start;[\s\S]*align-items: flex-start;[\s\S]*color: var\(--ink\);/);
+  assert.match(css, /\.preset strong\s*\{[\s\S]*color: var\(--ink\);/);
   assert.match(css, /--row-hover: #162a24/);
   assert.match(css, /background: var\(--row-hover\)/);
   assert.doesNotMatch(css, /tbody tr:hover\s*\{\s*background: #f7faf8/);

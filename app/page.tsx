@@ -1659,17 +1659,6 @@ export default function Home() {
     navigate("welcome");
   };
 
-  const startNewAccount = async () => {
-    await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
-    setUser(null);
-    setHistoryItems([]);
-    setAuthMessage("");
-    setLoginForm({ identity: "", password: "" });
-    setRegisterForm({ username: "", email: "", password: "", confirmPassword: "" });
-    setAuthReturnTo(view === "login" || view === "register" ? "home" : view);
-    navigate("register");
-  };
-
   async function loadHistory(page = 1, mode = historyMode) {
     if (!user) return;
     setHistoryLoading(true);
@@ -2001,9 +1990,6 @@ export default function Home() {
             <>
               <button className={view === "account" ? "button compact-button" : "button secondary compact-button"} type="button" onClick={() => navigate("account")}>
                 我的帳戶
-              </button>
-              <button className="button secondary compact-button" type="button" onClick={startNewAccount}>
-                註冊新帳號
               </button>
               <button className="button ghost compact-button" type="button" onClick={signOut}>
                 登出
