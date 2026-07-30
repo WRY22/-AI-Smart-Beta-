@@ -1538,6 +1538,15 @@ export default function Home() {
   }, [marketDrawer, mobileNavOpen]);
 
   useEffect(() => {
+    const mobileQuery = window.matchMedia("(max-width: 820px)");
+    const handleBreakpointChange = (event: MediaQueryListEvent) => {
+      if (!event.matches) setMobileNavOpen(false);
+    };
+    mobileQuery.addEventListener("change", handleBreakpointChange);
+    return () => mobileQuery.removeEventListener("change", handleBreakpointChange);
+  }, []);
+
+  useEffect(() => {
     if (!user || accountTab !== "history") return;
     void loadHistory(historyPage, historyMode);
     // loadHistory is a local event-style helper; these state dependencies define when the list should refresh.
@@ -1930,7 +1939,7 @@ export default function Home() {
         </div>
       )}
       {showAppShell && (
-      <header className="topbar">
+      <header className={mobileNavOpen ? "topbar mobile-menu-open" : "topbar"}>
         <button className="brand brand-button" type="button" onClick={() => navigate("home")} aria-label="返回首頁">
           <span className="brand-mark" aria-hidden="true" />
           <span>AI x Smart Beta</span>
@@ -1938,7 +1947,7 @@ export default function Home() {
         <button
           className="icon-btn menu-toggle"
           type="button"
-          aria-label={mobileNavOpen ? "關閉功能選單" : "開啟功能選單"}
+          aria-label={mobileNavOpen ? "收合功能選單" : "展開功能選單"}
           aria-expanded={mobileNavOpen}
           aria-controls="mobile-nav"
           onClick={() => setMobileNavOpen((current) => !current)}
@@ -1953,37 +1962,26 @@ export default function Home() {
           ))}
         </nav>
         {mobileNavOpen && (
-          <div className="mobile-nav-layer" role="presentation" onPointerDown={() => setMobileNavOpen(false)}>
-            <nav
-              id="mobile-nav"
-              className="mobile-nav open"
-              aria-label="手機導覽"
-              onPointerDown={(event) => event.stopPropagation()}
-            >
-              <div className="mobile-nav-head">
-                <strong>功能選單</strong>
-                <button className="icon-btn close-button" type="button" aria-label="關閉功能選單" onClick={() => setMobileNavOpen(false)}>
-                  <span aria-hidden="true">×</span>
+          <nav id="mobile-nav" className="mobile-nav open" aria-label="手機導覽">
+            {appNavItems.map(({ id, label }) => (
+              <button key={id} className={view === id ? "active" : ""} type="button" onClick={() => navigate(id)}>
+                {label}
+              </button>
+            ))}
+            {user ? (
+              <>
+                <button className={view === "account" ? "active" : ""} type="button" onClick={() => navigate("account")}>
+                  我的帳戶
                 </button>
-              </div>
-              {appNavItems.map(({ id, label }) => (
-                <button key={id} className={view === id ? "active" : ""} type="button" onClick={() => navigate(id)}>
-                  {label}
-                </button>
-              ))}
-              {user ? (
-                <>
-                  <button type="button" onClick={() => navigate("account")}>我的帳戶</button>
-                  <button type="button" onClick={signOut}>登出</button>
-                </>
-              ) : (
-                <>
-                  <button type="button" onClick={() => goToAuth("login")}>登入</button>
-                  <button type="button" onClick={() => goToAuth("register")}>免費註冊</button>
-                </>
-              )}
-            </nav>
-          </div>
+                <button type="button" onClick={signOut}>登出</button>
+              </>
+            ) : (
+              <>
+                <button type="button" onClick={() => goToAuth("login")}>登入</button>
+                <button type="button" onClick={() => goToAuth("register")}>免費註冊</button>
+              </>
+            )}
+          </nav>
         )}
         <div className="top-actions">
           {user ? (

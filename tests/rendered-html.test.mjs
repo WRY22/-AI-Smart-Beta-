@@ -66,7 +66,9 @@ test("welcome layout and market center replace the floating candidate entry", as
   assert.match(page, /查看候選股票/);
   assert.match(page, /role="tablist" aria-label="市場探索分類"/);
   assert.match(page, /function InfoTag/);
-  assert.match(page, /className="mobile-nav-layer"/);
+  assert.doesNotMatch(page, /mobile-nav-layer/);
+  assert.match(page, /aria-label=\{mobileNavOpen \? "收合功能選單" : "展開功能選單"\}/);
+  assert.match(page, /window\.matchMedia\("\(max-width: 820px\)"\)/);
   assert.match(page, /const navigate = \(next: View\) => \{[\s\S]*setMobileNavOpen\(false\)/);
   assert.match(page, /event\.key !== "Escape"[\s\S]*setMobileNavOpen\(false\)/);
   for (const label of ["首頁", "股票探索", "建立投資組合", "結果", "系統說明"]) {
@@ -78,7 +80,13 @@ test("welcome layout and market center replace the floating candidate entry", as
   assert.doesNotMatch(css, /candidate-fab/);
   assert.match(css, /@media \(prefers-reduced-motion: reduce\)/);
   assert.match(css, /\.mobile-nav\.open/);
-  assert.match(css, /width: min\(360px, 88vw\)/);
+  assert.doesNotMatch(css, /\.mobile-nav-layer/);
+  assert.doesNotMatch(css, /mobile-nav-in/);
+  assert.match(css, /grid-column: 1 \/ -1/);
+  assert.match(css, /width: 100%/);
+  assert.match(css, /height: auto/);
+  assert.match(css, /overflow: visible/);
+  assert.match(css, /@keyframes mobile-nav-expand/);
   assert.match(css, /\.mobile-nav button\s*\{[\s\S]*min-height: 46px/);
   assert.match(css, /\.preset\s*\{[\s\S]*justify-content: flex-start;[\s\S]*align-items: flex-start;[\s\S]*color: var\(--ink\);/);
   assert.match(css, /\.preset strong\s*\{[\s\S]*color: var\(--ink\);/);
