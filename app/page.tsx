@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 
 type View = "welcome" | "home" | "explore" | "detail" | "builder" | "results" | "about" | "login" | "register" | "account";
@@ -1985,17 +1985,12 @@ export default function Home() {
                 {label}
               </button>
             ))}
-            {user ? (
+            {user && (
               <>
                 <button className={view === "account" ? "active" : ""} type="button" onClick={() => navigate("account")}>
                   我的帳戶
                 </button>
                 <button type="button" onClick={signOut}>登出</button>
-              </>
-            ) : (
-              <>
-                <button type="button" onClick={() => goToAuth("login")}>登入</button>
-                <button type="button" onClick={() => goToAuth("register")}>免費註冊</button>
               </>
             )}
           </nav>
@@ -2826,6 +2821,7 @@ export default function Home() {
                         max={100}
                         step={5}
                         value={settings.factorWeights[factor]}
+                        style={{ "--range-progress": `${settings.factorWeights[factor]}%` } as CSSProperties}
                         aria-label={`${factorMeta[factor].label}權重滑桿`}
                         onChange={(event) => updateWeight(factor, Number(event.target.value))}
                       />
