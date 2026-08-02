@@ -708,6 +708,18 @@ function averageWeights() {
   return weights;
 }
 
+function normalizeWeightsToTotal(weights: Record<FactorKey, number>) {
+  const total = weightSum(weights);
+  if (total <= 0) return averageWeights();
+  const normalized = Object.fromEntries(
+    factorKeys.map((factor) => [factor, Number(((weights[factor] / total) * 100).toFixed(2))]),
+  ) as Record<FactorKey, number>;
+  const roundingGap = Number((100 - weightSum(normalized)).toFixed(2));
+  const adjustmentFactor = [...factorKeys].reverse().find((factor) => normalized[factor] > 0) ?? factorKeys[0];
+  normalized[adjustmentFactor] = Number((normalized[adjustmentFactor] + roundingGap).toFixed(2));
+  return normalized;
+}
+
 function validateFactorWeights(weights: Record<FactorKey, number>) {
   const errors: string[] = [];
   for (const factor of factorKeys) {
@@ -760,7 +772,8 @@ function validateStepThree(settings: PortfolioSettings) {
 
 function weightGuidance(weights: Record<FactorKey, number>) {
   const total = Number(weightSum(weights).toFixed(2));
-  const activeCount = Math.max(1, Object.values(weights).filter((value) => value > 0).length);
+  const activeFactors = Object.values(weights).filter((value) => value > 0).length;
+  const activeCount = activeFactors || factorKeys.length;
   if (Math.abs(total - 100) <= 0.01) return "權重設定完成，可以進入下一步。";
   if (total < 100) {
     const gap = Number((100 - total).toFixed(2));
@@ -768,6 +781,11 @@ function weightGuidance(weights: Record<FactorKey, number>) {
   }
   const gap = Number((total - 100).toFixed(2));
   return `目前超出 ${gap}%。若平均調整 ${activeCount} 個非零因子，每個因子可以減少約 ${Number((gap / activeCount).toFixed(2))}%。`;
+}
+
+function weightAvailability(weights: Record<FactorKey, number>) {
+  const difference = Number((100 - weightSum(weights)).toFixed(2));
+  return difference >= 0 ? `剩餘可分配：${difference}%` : `已超出：${Math.abs(difference)}%`;
 }
 
 function factorScoresFor(stock: Stock, settings: PortfolioSettings) {
@@ -1387,7 +1405,6 @@ export default function Home() {
   const candidateStocks = useMemo(() => stocks.filter((stock) => candidateIds.includes(stock.stock_id)), [candidateIds]);
   const latestDataDate = useMemo(() => stocks.map((stock) => stock.data_date).sort().at(-1) ?? "未提供", []);
   const markets = useMemo(() => Array.from(new Set(stocks.map((stock) => stock.market))).join("、"), []);
-  const weightErrors = validateFactorWeights(settings.factorWeights);
   const stepErrors = {
     1: validateStepOne(settings, candidateIds.length),
     2: validateFactorWeights(settings.factorWeights),
@@ -2771,11 +2788,23 @@ export default function Home() {
                     </button>
                   </div>
                 )}
-                <p className={isValidWeightTotal(settings.factorWeights) ? "notice compact" : "warning-box"}>
-                  目前權重總和：{weightSum(settings.factorWeights)}%
-                  {!isValidWeightTotal(settings.factorWeights) && "。請將權重總和調整為 100%。"}
-                </p>
-                <p className="notice compact">{weightGuidance(settings.factorWeights)}</p>
+                <div
+                  className={isValidWeightTotal(settings.factorWeights) ? "weight-status valid" : "weight-status invalid"}
+                  aria-live="polite"
+                  aria-atomic="true"
+                >
+                  <p className="weight-status-total">目前權重總和：{weightSum(settings.factorWeights)}%</p>
+                  <p className="weight-status-remaining">{weightAvailability(settings.factorWeights)}</p>
+                  <p className="weight-status-guidance">{weightGuidance(settings.factorWeights)}</p>
+                  <button
+                    className="button secondary weight-normalize-button"
+                    type="button"
+                    disabled={isValidWeightTotal(settings.factorWeights)}
+                    onClick={() => updateSetting("factorWeights", normalizeWeightsToTotal(settings.factorWeights))}
+                  >
+                    依目前比例調整至 100%
+                  </button>
+                </div>
                 {factorKeys.map((factor) => (
                   <div className="slider-row" key={factor}>
                     <span className="factor-name">
@@ -2790,29 +2819,36 @@ export default function Home() {
                       />
                       <small>{factorMeta[factor].code}</small>
                     </span>
-                    <input
-                      type="range"
-                      min={0}
-                      max={100}
-                      value={settings.factorWeights[factor]}
-                      aria-label={`${factorMeta[factor].label}權重滑桿`}
-                      onChange={(event) => updateWeight(factor, Number(event.target.value))}
-                    />
-                    <input
-                      className="field"
-                      type="number"
-                      min={0}
-                      max={100}
-                      value={settings.factorWeights[factor]}
-                      aria-label={`${factorMeta[factor].label}權重數值`}
-                      onChange={(event) => updateWeight(factor, Number(event.target.value))}
-                    />
+                    <div className="weight-slider-control">
+                      <input
+                        type="range"
+                        min={0}
+                        max={100}
+                        step={5}
+                        value={settings.factorWeights[factor]}
+                        aria-label={`${factorMeta[factor].label}權重滑桿`}
+                        onChange={(event) => updateWeight(factor, Number(event.target.value))}
+                      />
+                      <div className="weight-scale" aria-hidden="true">
+                        {[0, 25, 50, 75, 100].map((tick) => <span key={tick}>{tick}%</span>)}
+                      </div>
+                    </div>
+                    <label className="weight-number-input">
+                      <input
+                        className="field"
+                        type="number"
+                        inputMode="decimal"
+                        min={0}
+                        max={100}
+                        step={5}
+                        value={settings.factorWeights[factor]}
+                        aria-label={`${factorMeta[factor].label}權重數值`}
+                        onChange={(event) => updateWeight(factor, Number(event.target.value))}
+                        onBlur={(event) => updateWeight(factor, Number(event.target.value))}
+                      />
+                      <span aria-hidden="true">%</span>
+                    </label>
                   </div>
-                ))}
-                {weightErrors.map((error) => (
-                  <p className="warning-box" key={error}>
-                    {error}
-                  </p>
                 ))}
               </div>
             )}

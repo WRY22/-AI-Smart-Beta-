@@ -21,6 +21,12 @@ test("portfolio builder exposes the localized save flow", async () => {
   assert.doesNotMatch(page, /註冊新帳號/);
   assert.match(page, /使用者名稱或電子信箱/);
   assert.match(page, /<EyeIcon off=\{visible\} \/>/);
+  assert.match(page, /function normalizeWeightsToTotal/);
+  assert.match(page, /function weightAvailability/);
+  assert.match(page, /className="weight-status-total"/);
+  assert.match(page, /className="weight-status-guidance"/);
+  assert.match(page, /step=\{5\}/);
+  assert.match(page, /\[0, 25, 50, 75, 100\]/);
 });
 
 test("auth and portfolio persistence keep schema and cookies compatible", async () => {
@@ -87,6 +93,10 @@ test("welcome layout and market center replace the floating candidate entry", as
   assert.match(css, /height: auto/);
   assert.match(css, /overflow: visible/);
   assert.match(css, /@keyframes mobile-nav-expand/);
+  assert.doesNotMatch(css, /\.topbar\.mobile-menu-open\s*\{\s*position: relative/);
+  assert.match(css, /\.topbar\.mobile-menu-open ~ \.main \.stepper\s*\{[\s\S]*top: 454px/);
+  assert.match(css, /\.weight-status\s*\{[\s\S]*min-height: 120px/);
+  assert.match(css, /\.weight-slider-control input\[type="range"\][\s\S]*min-height: 44px/);
   assert.match(css, /\.mobile-nav button\s*\{[\s\S]*min-height: 46px/);
   assert.match(css, /\.preset\s*\{[\s\S]*justify-content: flex-start;[\s\S]*align-items: flex-start;[\s\S]*color: var\(--ink\);/);
   assert.match(css, /\.preset strong\s*\{[\s\S]*color: var\(--ink\);/);
